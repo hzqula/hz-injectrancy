@@ -1,0 +1,17 @@
+2026-03-22 11:37:30 [INFO] main_pipeline: Waktu mulai: 2026-03-22 11:37:30
+2026-03-22 11:37:30 [INFO] main_pipeline: Mode: single step (1)
+2026-03-22 11:37:30 [INFO] main_pipeline: 
+2026-03-22 11:37:30 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-22 11:37:30 [INFO] main_pipeline: │  STEP 1: INSTRUMENTASI ORACLE                            │
+2026-03-22 11:37:30 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-22 11:37:30 [INFO] instrumentor: ============================================================
+2026-03-22 11:37:30 [INFO] instrumentor: STEP 1: INSTRUMENTASI ORACLE
+2026-03-22 11:37:30 [INFO] instrumentor: ============================================================
+2026-03-22 11:37:30 [INFO] instrumentor: Jumlah kontrak yang akan diinstrumentasi: 2
+2026-03-22 11:37:30 [INFO] instrumentor: Menginstumentasi: 01_SimpleBank.sol
+2026-03-22 11:37:30 [WARNING] instrumentor: Tidak ada mapping variabel ditemukan. Pelacak akan mengandalkan msg.value.
+2026-03-22 11:37:30 [INFO] instrumentor:   ✓ Hasil instrumentasi → 01_SimpleBank.sol
+2026-03-22 11:37:30 [INFO] instrumentor: Menginstumentasi: 02_Crowdfunding.sol
+2026-03-22 11:37:30 [INFO] instrumentor:   ✓ Hasil instrumentasi → 02_Crowdfunding.sol
+2026-03-22 11:37:30 [INFO] instrumentor: 
+2026-03-22 11:37:30 [INFO] instrumentor: Instrumentasi selesai: 2/2 berhasil

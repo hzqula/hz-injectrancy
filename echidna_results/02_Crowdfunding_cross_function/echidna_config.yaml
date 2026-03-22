@@ -1,0 +1,11 @@
+balanceAddr: 10000
+balanceContract: 0
+coverage: true
+deployer: '0x30000000000000000000000000000000000000000'
+sender:
+- '0x20000000000000000000000000000000000000000'
+seqLen: 100
+shrinkLimit: 5000
+testLimit: 100000
+testMode: property
+timeout: 300

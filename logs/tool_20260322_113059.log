@@ -1,0 +1,14 @@
+2026-03-22 11:31:00 [INFO] main_pipeline: Waktu mulai: 2026-03-22 11:31:00
+2026-03-22 11:31:00 [INFO] main_pipeline: Mode: single step (2)
+2026-03-22 11:31:00 [INFO] main_pipeline: 
+2026-03-22 11:31:00 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-22 11:31:00 [INFO] main_pipeline: │  STEP 2: VERIFIKASI KOMPILASI                            │
+2026-03-22 11:31:00 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-22 11:31:00 [INFO] compiler: ============================================================
+2026-03-22 11:31:00 [INFO] compiler: STEP 2: VERIFIKASI KOMPILASI
+2026-03-22 11:31:00 [INFO] compiler: ============================================================
+2026-03-22 11:31:00 [INFO] compiler: Jumlah kontrak yang akan diverifikasi: 2
+2026-03-22 11:31:00 [INFO] compiler:   ✓ VALID     : FundMe.sol
+2026-03-22 11:31:00 [INFO] compiler:   ✓ VALID     : SimpleBank.sol
+2026-03-22 11:31:00 [INFO] compiler: 
+2026-03-22 11:31:00 [INFO] compiler: Hasil verifikasi: 2 valid, 0 invalid (dari 2 total)

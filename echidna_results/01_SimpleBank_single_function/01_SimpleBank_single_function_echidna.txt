@@ -1,0 +1,93 @@
+=== STDOUT ===
+[2026-03-22 11:37:49.10] Compiling `/home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_single_function.sol`... Done! (0.572200506s)
+Analyzing contract: /home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_single_function.sol:SimpleBank
+[2026-03-22 11:37:49.89] [Worker 2] New coverage: 655 instr, 1 contracts, 1 seqs in corpus
+[2026-03-22 11:37:49.90] [Worker 0] New coverage: 655 instr, 1 contracts, 2 seqs in corpus
+[2026-03-22 11:37:49.90] [Worker 1] New coverage: 655 instr, 1 contracts, 3 seqs in corpus
+[2026-03-22 11:37:49.97] [Worker 2] New coverage: 943 instr, 1 contracts, 4 seqs in corpus
+[2026-03-22 11:37:49.97] [Worker 1] New coverage: 943 instr, 1 contracts, 5 seqs in corpus
+[2026-03-22 11:37:50.07] [Worker 2] Test echidna_cek_saldo falsified!
+  Call sequence:
+SimpleBank.transactions() Time delay: 439556 seconds Block delay: 31232
+SimpleBank.getBalance() Time delay: 555530 seconds Block delay: 21295
+SimpleBank.bug_reentrancy_single(1524785991) Time delay: 526194 seconds Block delay: 6234
+SimpleBank.getTotalBalance() Time delay: 338920 seconds Block delay: 1088
+SimpleBank.getTotalBalance() Time delay: 297507 seconds Block delay: 22699
+SimpleBank.withdraw(1852025073877420035472876064595664021564634869625640873667095275831505024181) Time delay: 100835 seconds Block delay: 2512
+SimpleBank.withdraw(1852025073877420035472876064595664021564634869625640873667095275831505024181) Time delay: 73040 seconds Block delay: 5952
+SimpleBank.transactions() Time delay: 206186 seconds Block delay: 59552
+SimpleBank.transactions() Time delay: 419861 seconds Block delay: 32737
+SimpleBank.transactions() Time delay: 361136 seconds Block delay: 16089
+SimpleBank.transactions() Time delay: 361136 seconds Block delay: 57086
+SimpleBank.getTotalBalance() Time delay: 390247 seconds Block delay: 16089
+SimpleBank.totalDeposits() Time delay: 332369 seconds Block delay: 58783
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 66543 seconds Block delay: 32
+SimpleBank.transactions() Time delay: 65535 seconds Block delay: 6234
+SimpleBank.transactions() Time delay: 439556 seconds Block delay: 60054
+SimpleBank.transactions() Time delay: 478623 seconds Block delay: 23403
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 136393 seconds Block delay: 11826
+SimpleBank.withdraw(115792089237316195423570985008687907853269984665640564039457584007913129639935) Time delay: 439556 seconds Block delay: 2497
+SimpleBank.getBalance() Time delay: 511822 seconds Block delay: 1362
+SimpleBank.totalDeposits() Time delay: 275394 seconds Block delay: 22909
+SimpleBank.deposit() Time delay: 405856 seconds Block delay: 9966
+SimpleBank.getTotalBalance() Time delay: 136393 seconds Block delay: 2526
+SimpleBank.deposit() Time delay: 14 seconds Block delay: 12155
+SimpleBank.getTotalBalance() Time delay: 50417 seconds Block delay: 20979
+SimpleBank.getTotalBalance() Time delay: 136489 seconds Block delay: 1123
+SimpleBank.transactions() Time delay: 218497 seconds Block delay: 30011
+SimpleBank.withdraw(90449399688312062887704229797952673390625333280112600125011071751846099404674) Time delay: 66543 seconds Block delay: 35200
+SimpleBank.deposit() Time delay: 87730 seconds Block delay: 6234
+SimpleBank.bug_reentrancy_single(1524785991) Time delay: 238535 seconds Block delay: 15369
+SimpleBank.transactions() Time delay: 440097 seconds Block delay: 35248
+SimpleBank.deposit() Time delay: 198598 seconds Block delay: 9920
+SimpleBank.withdraw(86329009319855340564773129066228426677222749623094531589442322469132440673736) Time delay: 271957 seconds Block delay: 1088
+SimpleBank.deposit() Time delay: 135921 seconds Block delay: 15367
+SimpleBank.bug_reentrancy_single(14) Time delay: 33605 seconds Block delay: 42101
+SimpleBank.getBalance() Time delay: 490448 seconds Block delay: 30256
+SimpleBank.transactions() Time delay: 206186 seconds Block delay: 4896
+SimpleBank.transactions() Time delay: 62727 seconds Block delay: 22909
+SimpleBank.deposit() Time delay: 255 seconds Block delay: 47075
+SimpleBank.deposit() Time delay: 360624 seconds Block delay: 18429
+SimpleBank.getTotalBalance() Time delay: 172101 seconds Block delay: 9966
+SimpleBank.withdraw(35096191449983256497876903086951043058377568781072601257354073320504356214912) Time delay: 358061 seconds Block delay: 1088
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 390247 seconds Block delay: 39449
+SimpleBank.deposit() Time delay: 16802 seconds Block delay: 45819
+SimpleBank.getTotalBalance() Time delay: 414579 seconds Block delay: 53451
+SimpleBank.totalDeposits() Time delay: 195123 seconds Block delay: 9920
+SimpleBank.getBalance() Time delay: 396465 seconds Block delay: 127
+SimpleBank.transactions() Time delay: 463587 seconds Block delay: 24987
+SimpleBank.deposit() Time delay: 297507 seconds Block delay: 45261
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 400981 seconds Block delay: 60054
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 318197 seconds Block delay: 24311
+SimpleBank.withdraw(64808328507259426937722032693447395452992065919281877497750124283256053282168) Time delay: 437838 seconds Block delay: 5952
+SimpleBank.getBalance() Time delay: 198598 seconds Block delay: 55538
+SimpleBank.transactions() Time delay: 31594 seconds Block delay: 6721
+SimpleBank.deposit() Value: 0x2052e62be499ac3b3 Time delay: 255 seconds Block delay: 60267
+SimpleBank.bug_reentrancy_single(4370001) Time delay: 400981 seconds Block delay: 255
+SimpleBank.getTotalBalance() Time delay: 360624 seconds Block delay: 59983
+SimpleBank.getTotalBalance() Time delay: 206186 seconds Block delay: 11905
+SimpleBank.withdraw(4370001) Time delay: 297507 seconds Block delay: 59982
+
+[2026-03-22 11:37:50.08] [Worker 3] Test limit reached. Stopping.
+[2026-03-22 11:37:50.08] [Worker 1] Test limit reached. Stopping.
+[2026-03-22 11:37:50.08] [Worker 0] Test limit reached. Stopping.
+[2026-03-22 11:37:51.83] [Worker 2] Test limit reached. Stopping.
+[2026-03-22 11:37:51.83] [status] tests: 1/1, fuzzing: 2805/100000, values: [], cov: 943, corpus: 5, gas/s: 23029557
+echidna_cek_saldo: failed!💥  
+  Call sequence:
+    SimpleBank.deposit() Value: 0x1
+    SimpleBank.withdraw(1)
+
+Traces: 
+
+
+
+Unique instructions: 943
+Unique codehashes: 1
+Corpus size: 5
+Seed: 828385101501028592
+Total calls: 2805
+
+
+=== STDERR ===
+WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'

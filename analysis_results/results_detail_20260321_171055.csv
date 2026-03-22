@@ -1,0 +1,3 @@
+source_file,contract_name,variant,status,property_broken,bug_line_hit,detection_time_sec,error_message
+SimpleBank_cross_function.sol,SimpleBank,cross_function,DETECTED,True,False,5.739112377166748,
+SimpleBank_single_function.sol,SimpleBank,single_function,DETECTED,True,False,3.173286199569702,

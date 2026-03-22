@@ -1,0 +1,13 @@
+2026-03-21 17:08:30 [INFO] main_pipeline: Waktu mulai: 2026-03-21 17:08:30
+2026-03-21 17:08:30 [INFO] main_pipeline: Mode: single step (2)
+2026-03-21 17:08:30 [INFO] main_pipeline: 
+2026-03-21 17:08:30 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-21 17:08:30 [INFO] main_pipeline: │  STEP 2: VERIFIKASI KOMPILASI                            │
+2026-03-21 17:08:30 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-21 17:08:30 [INFO] compiler: ============================================================
+2026-03-21 17:08:30 [INFO] compiler: STEP 2: VERIFIKASI KOMPILASI
+2026-03-21 17:08:30 [INFO] compiler: ============================================================
+2026-03-21 17:08:30 [INFO] compiler: Jumlah kontrak yang akan diverifikasi: 1
+2026-03-21 17:08:30 [INFO] compiler:   ✓ VALID     : SimpleBank.sol
+2026-03-21 17:08:30 [INFO] compiler: 
+2026-03-21 17:08:30 [INFO] compiler: Hasil verifikasi: 1 valid, 0 invalid (dari 1 total)

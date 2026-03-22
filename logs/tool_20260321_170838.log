@@ -1,0 +1,19 @@
+2026-03-21 17:08:39 [INFO] main_pipeline: Waktu mulai: 2026-03-21 17:08:39
+2026-03-21 17:08:39 [INFO] main_pipeline: Mode: single step (3)
+2026-03-21 17:08:39 [INFO] main_pipeline: 
+2026-03-21 17:08:39 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-21 17:08:39 [INFO] main_pipeline: │  STEP 3: BUG INJECTION (REENTRANCY)                      │
+2026-03-21 17:08:39 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-21 17:08:39 [INFO] injector: ============================================================
+2026-03-21 17:08:39 [INFO] injector: STEP 3: BUG INJECTION
+2026-03-21 17:08:39 [INFO] injector: ============================================================
+2026-03-21 17:08:39 [INFO] injector: Jumlah kontrak yang akan diinjeksi: 1
+2026-03-21 17:08:39 [INFO] injector: Varian bug: ['single_function', 'cross_function']
+2026-03-21 17:08:39 [INFO] injector: 
+2026-03-21 17:08:39 [INFO] injector: Memproses: SimpleBank.sol
+2026-03-21 17:08:39 [INFO] injector:   Kontrak : SimpleBank | Mapping: balances
+2026-03-21 17:08:39 [INFO] injector:   ✓ [single_function] → SimpleBank_single_function.sol (injeksi baris 43)
+2026-03-21 17:08:39 [INFO] injector:   ✓ [cross_function] → SimpleBank_cross_function.sol (injeksi baris 43)
+2026-03-21 17:08:39 [INFO] injector: 
+2026-03-21 17:08:39 [INFO] injector: Total bug berhasil disuntikkan: 2
+2026-03-21 17:08:39 [INFO] injector: Injection log tersimpan di     : /home/zenom/hz-reentrancy/logs/injection_log.json

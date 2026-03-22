@@ -1,0 +1,84 @@
+=== STDOUT ===
+[2026-03-22 11:37:44.81] Compiling `/home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_cross_function.sol`... Done! (0.722218399s)
+Analyzing contract: /home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_cross_function.sol:SimpleBank
+[2026-03-22 11:37:45.83] [Worker 3] New coverage: 906 instr, 1 contracts, 1 seqs in corpus
+[2026-03-22 11:37:45.84] [Worker 0] New coverage: 906 instr, 1 contracts, 2 seqs in corpus
+[2026-03-22 11:37:45.84] [Worker 1] New coverage: 906 instr, 1 contracts, 3 seqs in corpus
+[2026-03-22 11:37:45.84] [Worker 2] New coverage: 906 instr, 1 contracts, 4 seqs in corpus
+[2026-03-22 11:37:45.89] [Worker 3] New coverage: 1000 instr, 1 contracts, 5 seqs in corpus
+[2026-03-22 11:37:46.52] [Worker 2] New coverage: 1009 instr, 1 contracts, 6 seqs in corpus
+[2026-03-22 11:37:46.54] [Worker 3] New coverage: 1009 instr, 1 contracts, 7 seqs in corpus
+[2026-03-22 11:37:46.72] [Worker 3] New coverage: 1012 instr, 1 contracts, 8 seqs in corpus
+[2026-03-22 11:37:46.78] [Worker 3] New coverage: 1015 instr, 1 contracts, 9 seqs in corpus
+[2026-03-22 11:37:47.11] [Worker 1] Test echidna_cek_saldo falsified!
+  Call sequence:
+SimpleBank.getBalance() Time delay: 271957 seconds Block delay: 1123
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 33271 seconds Block delay: 24311
+SimpleBank.getTotalBalance() Time delay: 437838 seconds Block delay: 6234
+SimpleBank.getTotalBalance() Time delay: 172101 seconds Block delay: 53562
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 400981 seconds Block delay: 12493
+SimpleBank.getBalance() Time delay: 206186 seconds Block delay: 2526
+SimpleBank.getBalance() Time delay: 519847 seconds Block delay: 59983
+SimpleBank.getTotalBalance() Time delay: 338920 seconds Block delay: 23885
+SimpleBank.totalDeposits() Time delay: 289607 seconds Block delay: 8447
+SimpleBank.bug_reentrancy_cross_withdraw(981) Time delay: 305572 seconds Block delay: 30011
+SimpleBank.totalDeposits() Time delay: 82672 seconds Block delay: 53166
+SimpleBank.bug_reentrancy_cross_withdraw(21600235785045123388315040815281861632318684805046069749732579678536164091412) Time delay: 439556 seconds Block delay: 30256
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 360624 seconds Block delay: 4896
+SimpleBank.bug_reentrancy_cross_withdraw(64608026441232022435133630621757329184629419224911948983831861460026221520766) Time delay: 49735 seconds Block delay: 6721
+SimpleBank.bug_reentrancy_cross_withdraw(21600235785045123388315040815281861632318684805046069749732579678536164091412) Time delay: 569114 seconds Block delay: 4462
+SimpleBank.totalDeposits() Time delay: 521319 seconds Block delay: 22909
+SimpleBank.withdraw(38568957381695238594558065646928180454818458468339698359486922751803931636437) Time delay: 275394 seconds Block delay: 1088
+SimpleBank.withdraw(879327196462633728470889123846252096123632810) Time delay: 437838 seconds Block delay: 1123
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 112444 seconds Block delay: 23722
+SimpleBank.getTotalBalance() Time delay: 415353 seconds Block delay: 22909
+SimpleBank.withdraw(20624200159519808121662253693733315242791328823742169378442978647109767557555) Time delay: 275394 seconds Block delay: 15369
+SimpleBank.totalDeposits() Time delay: 419861 seconds Block delay: 57086
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 157371 seconds Block delay: 47075
+SimpleBank.getBalance() Time delay: 31594 seconds Block delay: 7323
+SimpleBank.bug_reentrancy_cross_withdraw(4370001) Time delay: 209930 seconds Block delay: 20
+SimpleBank.withdraw(1454) Time delay: 521319 seconds Block delay: 11942
+SimpleBank.totalDeposits() Time delay: 66543 seconds Block delay: 54155
+SimpleBank.totalDeposits() Time delay: 386283 seconds Block delay: 14
+SimpleBank.getBalance() Time delay: 9 seconds Block delay: 23653
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 376096 seconds Block delay: 29791
+SimpleBank.totalDeposits() Time delay: 254414 seconds Block delay: 5237
+SimpleBank.bug_reentrancy_cross_withdraw(21722355340801516585175307196129362753731861133577033105198724732591622943473) Time delay: 448552 seconds Block delay: 12053
+SimpleBank.totalDeposits() Time delay: 65535 seconds Block delay: 23275
+SimpleBank.transactions() Time delay: 434894 seconds Block delay: 23885
+SimpleBank.getTotalBalance() Time delay: 156190 seconds Block delay: 4896
+SimpleBank.bug_reentrancy_cross_withdraw(21600235785045123388315040815281861632318684805046069749732579678536164091412) Time delay: 45142 seconds Block delay: 127
+SimpleBank.transactions() Time delay: 437229 seconds Block delay: 45819
+SimpleBank.totalDeposits() Time delay: 376096 seconds Block delay: 1362
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 405856 seconds Block delay: 18429
+SimpleBank.bug_reentrancy_cross_getBalance() Time delay: 588255 seconds Block delay: 9920
+SimpleBank.getTotalBalance() Time delay: 421950 seconds Block delay: 22909
+SimpleBank.bug_reentrancy_cross_withdraw(2271881321152430300733630079752207011354999043576356286718348097949886921642) Time delay: 4177 seconds Block delay: 33340
+SimpleBank.deposit() Value: 0x8da68242ebceb618 Time delay: 420078 seconds Block delay: 59552
+SimpleBank.withdraw(115792089237316195423570985008687907853269984665640564039457584007913129639931) Time delay: 478623 seconds Block delay: 9966
+SimpleBank.withdraw(4370000) Time delay: 166184 seconds Block delay: 32147
+
+[2026-03-22 11:37:47.12] [Worker 2] Test limit reached. Stopping.
+[2026-03-22 11:37:47.13] [Worker 3] Test limit reached. Stopping.
+[2026-03-22 11:37:47.13] [Worker 0] Test limit reached. Stopping.
+[2026-03-22 11:37:48.75] [status] tests: 1/1, fuzzing: 7149/100000, values: [], cov: 1015, corpus: 9, gas/s: 40948632
+[2026-03-22 11:37:49.07] [Worker 1] Test limit reached. Stopping.
+[2026-03-22 11:37:49.07] [status] tests: 1/1, fuzzing: 7149/100000, values: [], cov: 1015, corpus: 9, gas/s: 0
+echidna_cek_saldo: failed!💥  
+  Call sequence:
+    SimpleBank.deposit() Value: 0x1
+    SimpleBank.withdraw(1)
+
+Traces: 
+
+
+
+Unique instructions: 1015
+Unique codehashes: 1
+Corpus size: 9
+Seed: 6527249675962332024
+Total calls: 7149
+
+
+=== STDERR ===
+WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'

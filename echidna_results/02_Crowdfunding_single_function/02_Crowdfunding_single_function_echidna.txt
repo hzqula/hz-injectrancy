@@ -1,0 +1,7 @@
+=== STDOUT ===
+[2026-03-22 11:37:52.71] Compiling `/home/zenom/hz-reentrancy/injected_contracts/02_Crowdfunding_single_function.sol`... Done! (0.800534546s)
+Analyzing contract: /home/zenom/hz-reentrancy/injected_contracts/02_Crowdfunding_single_function.sol:CrowdFunding
+
+=== STDERR ===
+WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'
+echidna: Constructor arguments are required: [("_target",uint256),("_deadline",uint256)]

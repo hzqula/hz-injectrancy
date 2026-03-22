@@ -1,0 +1,4 @@
+variant,total_injected,total_detected,total_not_detected,total_activated,total_timeout,total_error,detection_rate,detection_rate_pct,activation_rate,activation_rate_pct,avg_detection_time_sec
+single_function,1,1,0,0,0,0,1.0,100.00%,0.0,0.00%,3.17
+cross_function,1,1,0,0,0,0,1.0,100.00%,0.0,0.00%,5.74
+overall,2,2,0,0,0,0,1.0,100.00%,0.0,0.00%,4.46

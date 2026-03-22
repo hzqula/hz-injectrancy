@@ -1,0 +1,64 @@
+[
+  {
+    "variant": "single_function",
+    "contract_name": "SimpleBank",
+    "mapping_var": "balances",
+    "tracker_var": "totalDeposits",
+    "oracle_function": "echidna_cek_saldo",
+    "injected_function": "bug_reentrancy_single",
+    "injection_line": 49,
+    "bug_description": "Transfer dilakukan sebelum state diperbarui (pelanggaran CEI). Penyerang dapat memanggil fungsi ini berulang sebelum saldo dikurangi.",
+    "source_file": "01_SimpleBank.sol",
+    "output_file": "01_SimpleBank_single_function.sol",
+    "output_path": "/home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_single_function.sol",
+    "base_contract": "01_SimpleBank"
+  },
+  {
+    "variant": "cross_function",
+    "contract_name": "SimpleBank",
+    "mapping_var": "balances",
+    "tracker_var": "totalDeposits",
+    "oracle_function": "echidna_cek_saldo",
+    "injected_functions": [
+      "bug_reentrancy_cross_withdraw",
+      "bug_reentrancy_cross_getBalance"
+    ],
+    "injection_line": 49,
+    "bug_description": "Dua fungsi berbagi state yang belum konsisten. bug_reentrancy_cross_withdraw melakukan transfer sebelum update state, bug_reentrancy_cross_getBalance membaca state yang mungkin belum konsisten.",
+    "source_file": "01_SimpleBank.sol",
+    "output_file": "01_SimpleBank_cross_function.sol",
+    "output_path": "/home/zenom/hz-reentrancy/injected_contracts/01_SimpleBank_cross_function.sol",
+    "base_contract": "01_SimpleBank"
+  },
+  {
+    "variant": "single_function",
+    "contract_name": "CrowdFunding",
+    "mapping_var": "contributors",
+    "tracker_var": "totalDeposits",
+    "oracle_function": "echidna_cek_saldo",
+    "injected_function": "bug_reentrancy_single",
+    "injection_line": 139,
+    "bug_description": "Transfer dilakukan sebelum state diperbarui (pelanggaran CEI). Penyerang dapat memanggil fungsi ini berulang sebelum saldo dikurangi.",
+    "source_file": "02_Crowdfunding.sol",
+    "output_file": "02_Crowdfunding_single_function.sol",
+    "output_path": "/home/zenom/hz-reentrancy/injected_contracts/02_Crowdfunding_single_function.sol",
+    "base_contract": "02_Crowdfunding"
+  },
+  {
+    "variant": "cross_function",
+    "contract_name": "CrowdFunding",
+    "mapping_var": "contributors",
+    "tracker_var": "totalDeposits",
+    "oracle_function": "echidna_cek_saldo",
+    "injected_functions": [
+      "bug_reentrancy_cross_withdraw",
+      "bug_reentrancy_cross_getBalance"
+    ],
+    "injection_line": 139,
+    "bug_description": "Dua fungsi berbagi state yang belum konsisten. bug_reentrancy_cross_withdraw melakukan transfer sebelum update state, bug_reentrancy_cross_getBalance membaca state yang mungkin belum konsisten.",
+    "source_file": "02_Crowdfunding.sol",
+    "output_file": "02_Crowdfunding_cross_function.sol",
+    "output_path": "/home/zenom/hz-reentrancy/injected_contracts/02_Crowdfunding_cross_function.sol",
+    "base_contract": "02_Crowdfunding"
+  }
+]

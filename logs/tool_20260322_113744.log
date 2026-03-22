@@ -1,0 +1,33 @@
+2026-03-22 11:37:44 [INFO] main_pipeline: Waktu mulai: 2026-03-22 11:37:44
+2026-03-22 11:37:44 [INFO] main_pipeline: Mode: single step (4)
+2026-03-22 11:37:44 [INFO] main_pipeline: 
+2026-03-22 11:37:44 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-22 11:37:44 [INFO] main_pipeline: │  STEP 4: PENGUJIAN DENGAN ECHIDNA                        │
+2026-03-22 11:37:44 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-22 11:37:44 [INFO] echidna_runner: ============================================================
+2026-03-22 11:37:44 [INFO] echidna_runner: STEP 4: PENGUJIAN DENGAN ECHIDNA
+2026-03-22 11:37:44 [INFO] echidna_runner: ============================================================
+2026-03-22 11:37:44 [INFO] echidna_runner: Jumlah kontrak yang akan diuji: 4
+2026-03-22 11:37:44 [INFO] echidna_runner: 
+2026-03-22 11:37:44 [INFO] echidna_runner: Menguji: 01_SimpleBank_cross_function.sol
+2026-03-22 11:37:44 [INFO] echidna_runner:   Menjalankan Echidna: 01_SimpleBank_cross_function.sol [cross_function]
+2026-03-22 11:37:49 [INFO] echidna_runner:   ✓ DETECTED   | waktu: 4.29s
+2026-03-22 11:37:49 [INFO] echidna_runner: 
+2026-03-22 11:37:49 [INFO] echidna_runner: Menguji: 01_SimpleBank_single_function.sol
+2026-03-22 11:37:49 [INFO] echidna_runner:   Menjalankan Echidna: 01_SimpleBank_single_function.sol [single_function]
+2026-03-22 11:37:51 [INFO] echidna_runner:   ✓ DETECTED   | waktu: 2.77s
+2026-03-22 11:37:51 [INFO] echidna_runner: 
+2026-03-22 11:37:51 [INFO] echidna_runner: Menguji: 02_Crowdfunding_cross_function.sol
+2026-03-22 11:37:51 [INFO] echidna_runner:   Menjalankan Echidna: 02_Crowdfunding_cross_function.sol [cross_function]
+2026-03-22 11:37:52 [INFO] echidna_runner:   ✗ NOT_DETECTED | bug tidak terpicu dalam 300s
+2026-03-22 11:37:52 [INFO] echidna_runner: 
+2026-03-22 11:37:52 [INFO] echidna_runner: Menguji: 02_Crowdfunding_single_function.sol
+2026-03-22 11:37:52 [INFO] echidna_runner:   Menjalankan Echidna: 02_Crowdfunding_single_function.sol [single_function]
+2026-03-22 11:37:53 [INFO] echidna_runner:   ✗ NOT_DETECTED | bug tidak terpicu dalam 300s
+2026-03-22 11:37:53 [INFO] echidna_runner: 
+2026-03-22 11:37:53 [INFO] echidna_runner: Ringkasan Echidna:
+2026-03-22 11:37:53 [INFO] echidna_runner:   DETECTED     : 2
+2026-03-22 11:37:53 [INFO] echidna_runner:   NOT_DETECTED : 2
+2026-03-22 11:37:53 [INFO] echidna_runner:   TIMEOUT      : 0
+2026-03-22 11:37:53 [INFO] echidna_runner:   ERROR        : 0
+2026-03-22 11:37:53 [INFO] echidna_runner: Hasil tersimpan di: /home/zenom/hz-reentrancy/logs/echidna_results.json

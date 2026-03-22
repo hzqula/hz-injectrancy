@@ -1,0 +1,104 @@
+=== STDOUT ===
+[2026-03-22 11:31:19.70] Compiling `/home/zenom/hz-reentrancy/injected_contracts/FundMe_single_function.sol`... Done! (0.802367409s)
+Analyzing contract: /home/zenom/hz-reentrancy/injected_contracts/FundMe_single_function.sol:FundMe
+[2026-03-22 11:31:20.83] [Worker 3] New coverage: 868 instr, 1 contracts, 1 seqs in corpus
+[2026-03-22 11:31:20.84] [Worker 1] New coverage: 868 instr, 1 contracts, 2 seqs in corpus
+[2026-03-22 11:31:20.84] [Worker 0] New coverage: 868 instr, 1 contracts, 3 seqs in corpus
+[2026-03-22 11:31:20.85] [Worker 2] New coverage: 868 instr, 1 contracts, 4 seqs in corpus
+[2026-03-22 11:31:20.90] [Worker 0] New coverage: 1062 instr, 1 contracts, 5 seqs in corpus
+[2026-03-22 11:31:20.97] [Worker 1] New coverage: 1151 instr, 1 contracts, 6 seqs in corpus
+[2026-03-22 11:31:21.15] [Worker 0] New coverage: 1157 instr, 1 contracts, 7 seqs in corpus
+[2026-03-22 11:31:21.15] [Worker 3] New coverage: 1157 instr, 1 contracts, 8 seqs in corpus
+[2026-03-22 11:31:21.47] [Worker 3] New coverage: 1160 instr, 1 contracts, 9 seqs in corpus
+[2026-03-22 11:31:22.06] [Worker 2] New coverage: 1163 instr, 1 contracts, 10 seqs in corpus
+[2026-03-22 11:31:22.22] [Worker 0] New coverage: 1166 instr, 1 contracts, 11 seqs in corpus
+[2026-03-22 11:31:23.75] [Worker 2] New coverage: 1308 instr, 1 contracts, 12 seqs in corpus
+[2026-03-22 11:31:23.76] [status] tests: 0/1, fuzzing: 39283/100000, values: [], cov: 1308, corpus: 12, gas/s: 154283213
+[2026-03-22 11:31:24.02] [Worker 1] Test echidna_cek_saldo falsified!
+  Call sequence:
+FundMe.funders(27091876087054819536692375936387780680359686436348982714886045245589005171881) Time delay: 112444 seconds Block delay: 30042
+FundMe.bug_reentrancy_single(19209927848367828917107691630176154874882550683538824000148759976511034596299) Time delay: 361136 seconds Block delay: 54809
+FundMe.MINIMUM_AMOUNT() Time delay: 303345 seconds Block delay: 127
+FundMe.withdraw(17385225542639058205555707940278364052160250774394584482613345841810007612976) Time delay: 390247 seconds Block delay: 9966
+FundMe.withdraw(20886996535408413507327944700984395302735831859312453483447821602678267006906) Time delay: 297507 seconds Block delay: 17016
+FundMe.i_owner() Time delay: 526194 seconds Block delay: 20243
+FundMe.getBalance() Time delay: 289607 seconds Block delay: 53166
+FundMe.getBalance() Time delay: 400981 seconds Block delay: 53451
+FundMe.MINIMUM_AMOUNT() Time delay: 526194 seconds Block delay: 20243
+FundMe.fund() Time delay: 67960 seconds Block delay: 45852
+FundMe.funders(34871216646230627510066007597336722872441968526159215009713295428341740369241) Time delay: 322247 seconds Block delay: 5023
+FundMe.getBalance() Time delay: 400981 seconds Block delay: 42406
+FundMe.totalDeposits() Time delay: 490448 seconds Block delay: 19933
+FundMe.i_owner() Time delay: 33605 seconds Block delay: 23885
+FundMe.bug_reentrancy_single(14719561094119501717171590421943368808870662801863094783317602934876289250044) Time delay: 66543 seconds Block delay: 561
+FundMe.getBalance() Time delay: 463588 seconds Block delay: 5032
+FundMe.withdraw(69433255219800745422170673600986292731869213408467724265767707291954777182192) Time delay: 332369 seconds Block delay: 31232
+FundMe.getBalance() Time delay: 414736 seconds Block delay: 15005
+FundMe.i_owner() Time delay: 379552 seconds Block delay: 11349
+FundMe.bug_reentrancy_single(1022)
+FundMe.fund() Time delay: 511822 seconds Block delay: 18429
+FundMe.totalDeposits() Time delay: 569114 seconds Block delay: 23722
+FundMe.bug_reentrancy_single(19209927848367828917107691630176154874882550683538824000148759976511034596299) Time delay: 390247 seconds Block delay: 42595
+FundMe.i_owner() Time delay: 478623 seconds Block delay: 1362
+FundMe.bug_reentrancy_single(1524785991) Time delay: 4177 seconds Block delay: 5032
+FundMe.i_owner() Value: 0x51ae7f382bb75fbac Time delay: 490446 seconds Block delay: 5054
+FundMe.withdraw(10000000000000000) Time delay: 360624 seconds Block delay: 23885
+FundMe.getBalance() Time delay: 305572 seconds Block delay: 30011
+FundMe.fund() Time delay: 376096 seconds Block delay: 18429
+FundMe.MINIMUM_AMOUNT() Time delay: 554465 seconds Block delay: 50017
+FundMe.totalDeposits() Time delay: 206186 seconds Block delay: 16089
+FundMe.i_owner() Time delay: 368333 seconds Block delay: 561
+FundMe.funders(549) Time delay: 358061 seconds Block delay: 38100
+FundMe.addressToAmountFunded(0xffffffff) Time delay: 207289 seconds Block delay: 30042
+FundMe.getBalance() Time delay: 33605 seconds Block delay: 24311
+FundMe.bug_reentrancy_single(14084978364421154728186023273309246997341730018401450385194816534908514840051)
+FundMe.bug_reentrancy_single(1524785991) Time delay: 209930 seconds Block delay: 9966
+FundMe.getBalance() Time delay: 478623 seconds Block delay: 1123
+FundMe.bug_reentrancy_single(24332248051482742395612632223368531463432841311695412593651102989207161999389) Time delay: 303345 seconds Block delay: 60054
+FundMe.funders(613340850560217929866079690230081863728091306753445142876349680032383310984) Time delay: 412373 seconds Block delay: 2512
+FundMe.funders(0) Time delay: 390247 seconds Block delay: 42101
+FundMe.addressToAmountFunded(0xffffffff) Time delay: 522178 seconds Block delay: 19933
+FundMe.withdraw(2766362801) Time delay: 275394 seconds Block delay: 5023
+FundMe.bug_reentrancy_single(59916910466197882910433073079571729910887699065919342808982128829937383641849) Time delay: 206186 seconds Block delay: 60054
+FundMe.MINIMUM_AMOUNT() Time delay: 478623 seconds Block delay: 59982
+FundMe.addressToAmountFunded(0x0) Time delay: 156190 seconds Block delay: 18429
+FundMe.addressToAmountFunded(0xa329c0648769a73afac7f9381e08fb43dbea72) Time delay: 16802 seconds Block delay: 35200
+FundMe.funders(55607897536293616490334954059331281469868196168565645745596637088729905854597) Time delay: 255 seconds Block delay: 12936
+FundMe.withdraw(2766362801) Time delay: 66543 seconds Block delay: 2511
+FundMe.MINIMUM_AMOUNT() Time delay: 580465 seconds Block delay: 35360
+FundMe.addressToAmountFunded(0xa329c0648769a73afac7f9381e08fb43dbea72) Time delay: 297507 seconds Block delay: 4462
+FundMe.funders(323970767618669979394270769648040372602106168479959552299751093543009929330) Time delay: 360624 seconds Block delay: 1984
+FundMe.MINIMUM_AMOUNT() Time delay: 463587 seconds Block delay: 23275
+FundMe.funders(115792089237316195423570985008687907853269984665640564039457584007913129639934) Time delay: 16802 seconds Block delay: 57086
+FundMe.getBalance() Time delay: 185098 seconds Block delay: 15005
+FundMe.totalDeposits() Time delay: 490446 seconds Block delay: 24980
+FundMe.addressToAmountFunded(0x0) Time delay: 116188 seconds Block delay: 60267
+FundMe.fund() Value: 0x11c1e2ab90a2419dd Time delay: 487078 seconds Block delay: 23403
+FundMe.fund() Time delay: 275394 seconds Block delay: 1123
+FundMe.funders(613340850560217929866079690230081863728091306753445142876349680032383310984) Time delay: 490448 seconds Block delay: 45261
+FundMe.funders(115792089237316195423570985008687907853269984665640564039457584007913129639933) Time delay: 463587 seconds Block delay: 39219
+FundMe.withdraw(4370000) Time delay: 569114 seconds Block delay: 1984
+
+[2026-03-22 11:31:24.02] [Worker 3] Test limit reached. Stopping.
+[2026-03-22 11:31:24.03] [Worker 2] Test limit reached. Stopping.
+[2026-03-22 11:31:24.03] [Worker 0] Test limit reached. Stopping.
+[2026-03-22 11:31:26.41] [Worker 1] Test limit reached. Stopping.
+[2026-03-22 11:31:26.41] [status] tests: 1/1, fuzzing: 42968/100000, values: [], cov: 1308, corpus: 12, gas/s: 14414601
+echidna_cek_saldo: failed!💥  
+  Call sequence:
+    FundMe.fund() Value: 0x23b837a140815f
+    FundMe.withdraw(1)
+
+Traces: 
+
+
+
+Unique instructions: 1308
+Unique codehashes: 1
+Corpus size: 12
+Seed: 5313254514556095468
+Total calls: 42968
+
+
+=== STDERR ===
+WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'

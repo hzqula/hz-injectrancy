@@ -1,0 +1,5 @@
+2026-03-21 16:58:47 [INFO] main_pipeline: Memeriksa prasyarat...
+2026-03-21 16:58:48 [ERROR] main_pipeline: Prasyarat tidak terpenuhi:
+2026-03-21 16:58:48 [ERROR] main_pipeline:   ✗ Tidak ada file .sol di direktori: /home/zenom/hz-reentrancy/contracts
+  → Tambahkan minimal satu kontrak Solidity.
+2026-03-21 16:58:48 [ERROR] main_pipeline: ✗ Ada prasyarat yang belum terpenuhi.

@@ -1,0 +1,28 @@
+2026-03-21 17:10:55 [INFO] main_pipeline: Waktu mulai: 2026-03-21 17:10:55
+2026-03-21 17:10:55 [INFO] main_pipeline: Mode: single step (5)
+2026-03-21 17:10:55 [INFO] main_pipeline: 
+2026-03-21 17:10:55 [INFO] main_pipeline: ┌──────────────────────────────────────────────────────────┐
+2026-03-21 17:10:55 [INFO] main_pipeline: │  STEP 5: ANALISIS HASIL DAN METRIK                       │
+2026-03-21 17:10:55 [INFO] main_pipeline: └──────────────────────────────────────────────────────────┘
+2026-03-21 17:10:55 [INFO] analyzer: ============================================================
+2026-03-21 17:10:55 [INFO] analyzer: STEP 5: ANALISIS HASIL
+2026-03-21 17:10:55 [INFO] analyzer: ============================================================
+2026-03-21 17:10:55 [INFO] analyzer: Total hasil Echidna dimuat: 2 entri
+2026-03-21 17:10:55 [INFO] analyzer: 
+2026-03-21 17:10:55 [INFO] analyzer: ================================================================================
+2026-03-21 17:10:55 [INFO] analyzer: HASIL ANALISIS - RINGKASAN METRIK
+2026-03-21 17:10:55 [INFO] analyzer: ================================================================================
+2026-03-21 17:10:55 [INFO] analyzer: Varian               | Total  | Detected  | DR%      | Activated  | AR%      | Avg Time(s) 
+2026-03-21 17:10:55 [INFO] analyzer: --------------------------------------------------------------------------------
+2026-03-21 17:10:55 [INFO] analyzer: single_function      | 1      | 1         | 100.0  % | 0          | 0.0    % | 3.17        
+2026-03-21 17:10:55 [INFO] analyzer: cross_function       | 1      | 1         | 100.0  % | 0          | 0.0    % | 5.74        
+2026-03-21 17:10:55 [INFO] analyzer: overall              | 2      | 2         | 100.0  % | 0          | 0.0    % | 4.46        
+2026-03-21 17:10:55 [INFO] analyzer: ================================================================================
+2026-03-21 17:10:55 [INFO] analyzer: Metrik CSV tersimpan di: /home/zenom/hz-reentrancy/analysis_results/metrics_summary_20260321_171055.csv
+2026-03-21 17:10:55 [INFO] analyzer: Detail hasil CSV tersimpan di: /home/zenom/hz-reentrancy/analysis_results/results_detail_20260321_171055.csv
+2026-03-21 17:10:55 [INFO] analyzer: Ringkasan JSON tersimpan di: /home/zenom/hz-reentrancy/analysis_results/summary_20260321_171055.json
+2026-03-21 17:10:55 [INFO] analyzer: 
+2026-03-21 17:10:55 [INFO] analyzer: INSIGHT UTAMA:
+2026-03-21 17:10:55 [INFO] analyzer:   Detection Rate  (keseluruhan): 100.00% (2/2)
+2026-03-21 17:10:55 [INFO] analyzer:   Activation Rate (keseluruhan): 0.00% (0/2)
+2026-03-21 17:10:55 [INFO] analyzer:   Avg Deteksi (yang terdeteksi) : 4.46 detik
