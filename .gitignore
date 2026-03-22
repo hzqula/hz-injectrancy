@@ -1,0 +1,6 @@
+injected_contract/
+instrumented_contract/
+echidna_results/
+crytic_export/
+analysis_results/
+logs/
