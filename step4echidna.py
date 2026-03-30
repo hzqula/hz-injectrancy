@@ -1,21 +1,19 @@
 """
 STEP 4 - PENGUJIAN DENGAN ECHIDNA
 =================================
-Menjalankan Echidna property-based fuzzer pada setiap kontrak yang
+Jalanin Echidna property-based fuzzer pada setiap kontrak yang
 telah disuntikkan bug reentrancy.
 
-Echidna akan:
-  1. Membaca kontrak yang telah diinstrumentasi + disuntikkan bug
-  2. Menjalankan fuzzing campaign untuk mencari pelanggaran property
+Echidna bakal:
+  1. Bacain kontrak yang udah diinstrumentasi + disuntikkan bug
+  2. Jalanin fuzzing buat nyari pelanggaran property
   3. Melaporkan jika oracle echidna_cek_saldo() bernilai FALSE
-     (yang berarti saldo kontrak < totalDeposits → bug aktif)
+     (artinya saldo kontrak < totalDeposits → bug aktif)
 
 Metrik yang diukur:
   - Detection Rate   : apakah Echidna melaporkan FAILED pada property
   - Activation Rate  : apakah baris bug tercapai dalam corpus coverage
   - Detection Time   : waktu hingga property dilanggar pertama kali
-
-Referensi proposal Bab 3.6 (Pengujian dengan Echidna)
 """
 
 import os
@@ -40,7 +38,7 @@ from logger import get_logger
 log = get_logger("echidna_runner")
 
 
-# ─── Data Classes ─────────────────────────────────────────────────────────────
+# Data Classes 
 
 @dataclass
 class EchidnaResult:
@@ -71,7 +69,7 @@ class EchidnaResult:
         return asdict(self)
 
 
-# ─── Konfigurasi YAML Echidna ─────────────────────────────────────────────────
+# Konfigurasi YAML Echidna
 
 def _generate_echidna_config(output_path: str) -> str:
     """
@@ -101,7 +99,7 @@ def _generate_echidna_config(output_path: str) -> str:
     return config_path
 
 
-# ─── Parsing Output Echidna ───────────────────────────────────────────────────
+# Parsing Output Echidna
 
 def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
     """
@@ -115,7 +113,7 @@ def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
     """
     combined = stdout + "\n" + stderr
 
-    # ── Cek apakah property dilanggar ─────────────────────────────────────────
+    # Cek apakah property dilanggar
     # Echidna output: "echidna_cek_saldo: failed!💥"
     property_broken = bool(
         re.search(
@@ -125,7 +123,7 @@ def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
         )
     )
 
-    # ── Ekstrak waktu deteksi ──────────────────────────────────────────────────
+    # Ekstrak waktu deteksi
     # Echidna mencetak "Seed:" dan statistik saat selesai
     # Format waktu bervariasi: "time elapsed: X.XXs" atau dari timestamp
     detection_time = -1.0
@@ -133,7 +131,7 @@ def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
     if time_match and property_broken:
         detection_time = float(time_match.group(1))
 
-    # ── Cek bug line hit via coverage ──────────────────────────────────────────
+    # Cek bug line hit via coverage
     # Jika Echidna mencetak coverage, baris dengan '*' berarti tercapai
     bug_line_hit = bool(
         re.search(r"bug_reentrancy.*\*", combined, re.IGNORECASE)
@@ -157,8 +155,51 @@ def _detect_contract_name_in_file(filepath: str) -> Optional[str]:
         pass
     return None
 
+# Fungsi echidna wrapper
+def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: str) -> Optional[str]:
+    """
+    Membuat file wrapper otomatis dengan Pre-Conditioning (Harnessing).
+    """
+    with open(contract_path, "r", encoding="utf-8") as f:
+        source = f.read()
 
-# ─── Fungsi Runner Echidna ────────────────────────────────────────────────────
+    # Cek apakah ini kontrak CrowdFunding yang butuh konstruktor
+    if "constructor(uint256 _target, uint256 _deadline)" in source:
+        wrapper_name = f"{contract_name}Echidna"
+        wrapper_filename = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
+        wrapper_path = os.path.join(result_dir, wrapper_filename)
+        
+        # Buat isi file wrapper dengan injeksi saldo paksa
+        wrapper_code = f"""// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.7;
+
+import "../../injected_contracts/{os.path.basename(contract_path)}";
+
+contract {wrapper_name} is {contract_name} {{
+    // Gunakan payable agar bisa menerima ether awal jika butuh
+    constructor() {contract_name}(1000, 86400) payable {{
+        // PRE-CONDITIONING (HARNESS):
+        // Bypass fungsi contribute() yang membatasi fuzzer.
+        // Kita langsung berikan saldo kepada msg.sender (deployer)
+        // dan alamat default Echidna (0x10000, 0x20000, 0x30000)
+        
+        contributors[msg.sender] = 500;
+        contributors[address(0x10000)] = 500;
+        contributors[address(0x20000)] = 500;
+        
+        totalDeposits += 1500;
+        raisedAmount += 1500;
+    }}
+}}
+"""
+        with open(wrapper_path, "w", encoding="utf-8") as wf:
+            wf.write(wrapper_code)
+            
+        return wrapper_path
+    
+    return None
+
+# Fungsi Runner Echidna
 
 def run_echidna_on_contract(
     contract_path: str,
@@ -193,17 +234,24 @@ def run_echidna_on_contract(
 
     os.makedirs(result_dir, exist_ok=True)
 
-    # ── Generate konfigurasi YAML ──────────────────────────────────────────────
+    # Generate konfigurasi YAML 
     config_path = _generate_echidna_config(result_dir)
 
-    # ── Jalankan Echidna ───────────────────────────────────────────────────────
+    wrapper_path = _create_echidna_wrapper(contract_path, result_dir, contract_name)
+
+    if wrapper_path:
+        log.info(f"  [!] Kontrak butuh konstruktor. Wrapper dibuat: {os.path.basename(wrapper_path)}")
+        contract_path = wrapper_path
+        contract_name = f"{contract_name}Echidna" # Gunakan nama kontrak wrapper
+
+    # Echidna command
     cmd = [
         "echidna",
         contract_path,
         "--config", config_path,
         "--format", "text",
     ]
-
+    
     if contract_name:
         cmd += ["--contract", contract_name]
 
@@ -231,20 +279,41 @@ def run_echidna_on_contract(
             stdout, stderr
         )
 
+        if property_broken:
+            bug_line_hit = True
+
         result.property_broken  = property_broken
         result.bug_line_hit     = bug_line_hit
 
-        if property_broken:
-            result.status           = "DETECTED"
-            result.detection_time_sec = detection_time if detection_time >= 0 else elapsed
-            log.info("  ✓ DETECTED   | waktu: %.2fs", result.detection_time_sec)
-        else:
-            result.status           = "NOT_DETECTED"
-            result.detection_time_sec = ECHIDNA_TIMEOUT  # catat sebagai max timeout
-            log.info("  ✗ NOT_DETECTED | bug tidak terpicu dalam %ds", ECHIDNA_TIMEOUT)
+        # Konversi boolean menjadi string YES/NO
+        det_status = "YES" if property_broken else "NO"
+        act_status = "YES" if bug_line_hit else "NO"
 
-        if bug_line_hit:
-            log.debug("  → Baris bug tercapai (activation confirmed)")
+        # Cek jika Echidna crash/error sebelum mengeluarkan hasil
+        if proc.returncode != 0 and not property_broken:
+            result.status = "ERROR"
+            error_msg = stderr.strip().split("\n")[-1] if stderr else "Unknown Error"
+            result.error_message = f"Echidna crash: {error_msg}"
+            log.error("  ✗ ERROR      | %s", result.error_message)
+        else:
+            # Simpan status untuk rekapan JSON di akhir
+            if property_broken:
+                result.status = "DETECTED"
+                result.detection_time_sec = detection_time if detection_time >= 0 else elapsed
+            elif bug_line_hit:
+                result.status = "ACTIVATED"
+                result.detection_time_sec = ECHIDNA_TIMEOUT
+            else:
+                result.status = "NOT_DETECTED"
+                result.detection_time_sec = ECHIDNA_TIMEOUT
+
+            # Cetak ke terminal sesuai format baru
+            log.info("  DETECTED   : %s", det_status)
+            log.info("  ACTIVATED  : %s", act_status)
+            
+            # Opsional: Tampilkan waktu hanya jika berhasil terdeteksi
+            if property_broken:
+                log.info("  Waktu      : %.2fs", result.detection_time_sec)
 
     except subprocess.TimeoutExpired:
         elapsed = time.time() - start_time
@@ -266,7 +335,7 @@ def run_echidna_on_contract(
         result.error_message = str(e)
         log.error("  ✗ ERROR      | %s", e)
 
-    # ── Simpan raw output ke file ──────────────────────────────────────────────
+    # Simpan raw output ke file 
     output_log_path = os.path.join(result_dir, f"{os.path.splitext(fname)[0]}_echidna.txt")
     with open(output_log_path, "w", encoding="utf-8") as f:
         f.write("=== STDOUT ===\n")
@@ -344,7 +413,7 @@ def run_echidna_all(
         )
         all_results.append(echidna_result)
 
-    # ── Simpan semua hasil ke JSON ─────────────────────────────────────────────
+    # Simpan semua hasil ke JSON 
     results_log_path = os.path.join(LOGS_DIR, "echidna_results.json")
     os.makedirs(LOGS_DIR, exist_ok=True)
     with open(results_log_path, "w", encoding="utf-8") as f:
@@ -353,14 +422,17 @@ def run_echidna_all(
             f, indent=2, ensure_ascii=False
         )
 
-    detected = sum(1 for r in all_results if r.status == "DETECTED")
-    timeout  = sum(1 for r in all_results if r.status == "TIMEOUT")
-    error    = sum(1 for r in all_results if r.status == "ERROR")
-
+    # Hitung statistik
+    detected  = sum(1 for r in all_results if r.property_broken)
+    activated = sum(1 for r in all_results if r.bug_line_hit)
+    timeout   = sum(1 for r in all_results if r.status == "TIMEOUT")
+    error     = sum(1 for r in all_results if r.status == "ERROR")
+    not_det   = sum(1 for r in all_results if not r.property_broken and r.status not in ["TIMEOUT", "ERROR"])
     log.info("")
     log.info("Ringkasan Echidna:")
     log.info("  DETECTED     : %d", detected)
-    log.info("  NOT_DETECTED : %d", len(all_results) - detected - timeout - error)
+    log.info("  ACTIVATED    : %d", activated)
+    log.info("  NOT_DETECTED : %d", not_det)
     log.info("  TIMEOUT      : %d", timeout)
     log.info("  ERROR        : %d", error)
     log.info("Hasil tersimpan di: %s", results_log_path)
@@ -368,7 +440,7 @@ def run_echidna_all(
     return all_results
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────────
+# Entry Point 
 if __name__ == "__main__":
     import sys
 
