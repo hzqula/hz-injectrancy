@@ -4,3 +4,4 @@ echidna_results/
 crytic-export/
 analysis_results/
 logs/
+__pycache__/
