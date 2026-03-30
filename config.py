@@ -5,7 +5,7 @@ Diadaptasi dari SolidiFI untuk evaluasi analisis dinamis dengan Echidna
 
 import os
 
-# ─── Direktori ────────────────────────────────────────────────────────────────
+# Direktori 
 BASE_DIR              = os.path.dirname(os.path.abspath(__file__))
 BASE_CONTRACTS_DIR    = os.path.join(BASE_DIR, "contracts")
 INSTRUMENTED_DIR      = os.path.join(BASE_DIR, "instrumented_contracts")
@@ -15,16 +15,15 @@ ANALYSIS_RESULTS_DIR  = os.path.join(BASE_DIR, "analysis_results")
 BUG_PATTERNS_DIR      = os.path.join(BASE_DIR, "bug_patterns")
 LOGS_DIR              = os.path.join(BASE_DIR, "logs")
 
-# ─── Varian Bug Reentrancy ─────────────────────────────────────────────────────
-# Sesuai Bab 2.2.2 proposal: single-function dan cross-function
+# Varian Bug Reentrancy
 BUG_VARIANTS = [
     "single_function",
     "cross_function",
 ]
 
-# ─── Konfigurasi Echidna ───────────────────────────────────────────────────────
+# Konfigurasi Echidna 
 ECHIDNA_CONFIG = {
-    "testLimit":   100000,   # Jumlah test case
+    "testLimit":   1000000,   # Jumlah test case
     "seqLen":      100,      # Panjang sequence transaksi
     "shrinkLimit": 5000,     # Batas iterasi shrinking
     "coverage":    True,     # Coverage-guided fuzzing
@@ -35,22 +34,20 @@ ECHIDNA_CONFIG = {
     "balanceContract": 0,
 }
 
-# ─── Versi Solidity ────────────────────────────────────────────────────────────
-# Proposal: Solidity versi 0.8.0 atau lebih tinggi
+# Versi Solidity
 SOLIDITY_VERSION = "0.8.0"
 SOLC_BINARY = "solc"  # Path ke solc binary
 
-# ─── Nama Fungsi Oracle ────────────────────────────────────────────────────────
-# Fungsi Echidna harus berawalan "echidna_"
+# Nama Fungsi Oracle harus diawali dengan "echidna_"
 ORACLE_FUNCTION_PREFIX = "echidna_"
 ORACLE_FUNCTION_NAME   = "echidna_cek_saldo"
 
-# ─── Nama Variabel Pelacak ─────────────────────────────────────────────────────
+# Nama Variabel Pelacak 
 TRACKER_VAR_NAME = "totalDeposits"
 
-# ─── Timeout ──────────────────────────────────────────────────────────────────
+# Timeout
 COMPILATION_TIMEOUT = 30   # detik
 ECHIDNA_TIMEOUT     = 300  # detik per kontrak
 
-# ─── Logging ──────────────────────────────────────────────────────────────────
+# Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
