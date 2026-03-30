@@ -1,22 +1,10 @@
 """
 STEP 3 - BUG INJECTION
 =================================
-Menyisipkan pola kerentanan reentrancy ke dalam kontrak yang telah
-diinstrumentasi. Menghasilkan dua varian kontrak per base contract:
+Nyisipin pola kerentanan reentrancy ke dalam kontrak yang udah
+diinstrumentasiin. Dan ngasilin dua varian kontrak per base contract:
   - single_function reentrancy
   - cross_function reentrancy
-
-Diadaptasi dari SolidiFI (Ghaleb & Pattabiraman, 2020) dengan
-penyesuaian untuk:
-  1. Fokus hanya pada kerentanan reentrancy (sesuai proposal)
-  2. Template-based injection (bukan all-location injection)
-  3. Menghasilkan injection log dalam format JSON
-
-Alur:
-  instrumented_contract  →  [bug injection]  →  injected_contract(s)
-                                              →  injection_log.json
-
-Referensi proposal Bab 3.5 (Bug Injection)
 """
 
 import os
@@ -38,9 +26,7 @@ from logger import get_logger
 log = get_logger("injector")
 
 
-# ─── Template Bug Reentrancy ───────────────────────────────────────────────────
-# Referensi: Proposal Bab 2.2.2 (Jenis-Jenis Reentrancy) &
-#            SolidiFI paper Figure 8 (Re-entrancy example)
+# Template Bug Reentrancy
 
 SINGLE_FUNCTION_TEMPLATE = """
     // [BUG-INJECTED] Single-Function Reentrancy
@@ -78,7 +64,7 @@ CROSS_FUNCTION_TEMPLATE = """
     }}
 """
 
-# Constructor/receive function untuk bug yang memerlukan payable
+# Constructor/receive function buat bug yang perlu payable
 PAYABLE_CONSTRUCTOR_TEMPLATE = """
     // [INJECTED] Receive function untuk mendukung pengiriman ether
     receive() external payable {{
@@ -87,10 +73,10 @@ PAYABLE_CONSTRUCTOR_TEMPLATE = """
 """
 
 
-# ─── Regex Helper ─────────────────────────────────────────────────────────────
+# Regex
 
 MAPPING_PATTERN = re.compile(
-    r"mapping\s*\(\s*address\s*=>\s*uint256\s*\)\s+(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
+    r"mapping\s*\(\s*address[\s\w]*=>\s*uint(?:256)?[\s\w]*\)\s+(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
     re.IGNORECASE,
 )
 
@@ -105,9 +91,6 @@ HAS_PAYABLE_FALLBACK = re.compile(
     r"fallback\s*\(\s*\)\s+external\s+payable",
     re.MULTILINE,
 )
-
-
-# ─── Fungsi Pembantu ──────────────────────────────────────────────────────────
 
 def _find_mapping_variable(source: str) -> Optional[str]:
     """
@@ -166,7 +149,7 @@ def _detect_main_contract_name(source: str) -> Optional[str]:
     return None
 
 
-# ─── Fungsi Injeksi Per Varian ────────────────────────────────────────────────
+# Fungsi Injeksi Per Varian
 
 def inject_single_function(
     source: str,
@@ -265,7 +248,7 @@ def inject_cross_function(
     return injected_source, log_entry
 
 
-# ─── Dispatcher Utama ─────────────────────────────────────────────────────────
+# Dispatcher
 
 VARIANT_INJECTORS = {
     "single_function": inject_single_function,
@@ -417,7 +400,7 @@ def run_injection(
     return all_logs
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────────
+# Entry Point
 if __name__ == "__main__":
     import sys
 
