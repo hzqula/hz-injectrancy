@@ -1,16 +1,14 @@
 """
 STEP 2 - VERIFIKASI KOMPILASI
 =================================
-Memastikan setiap kontrak yang telah diinstrumentasi dapat dikompilasi
-tanpa error sebelum dilanjutkan ke tahap injeksi bug.
+Mastiin semua kontrak yang udah diinstrumentasi dapat dikompilasi
+tanpa error sebelum dilanjutin ke tahap injeksi bug.
 
-Kontrak yang gagal dikompilasi tidak akan dilanjutkan ke tahap berikutnya
+Kontrak yang gagal dikompilasi ga akan dilanjutin ke tahap berikutnya
 dan akan dicatat sebagai error dalam log.
 
 Alur:
   instrumented_contract  →  [verifikasi solc]  →  valid / invalid
-
-Referensi proposal Bab 3.4 (Verifikasi Kompilasi)
 """
 
 import os
