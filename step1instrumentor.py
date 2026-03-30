@@ -12,8 +12,6 @@ Apa yang disisipkan:
   1. State variable pelacak  : uint256 public totalDeposits;
   2. Logika pelacak           : totalDeposits += msg.value;  (pada setiap deposit)
   3. Fungsi oracle Echidna    : function echidna_cek_saldo() public view returns (bool)
-
-Referensi proposal Bab 3.3.2 (Instrumentasi Oracle)
 """
 
 import os
@@ -32,7 +30,7 @@ from logger import get_logger
 log = get_logger("instrumentor")
 
 
-# ─── Template Kode yang Disisipkan ────────────────────────────────────────────
+# Template Kode yang Disisipkan
 
 TRACKER_VAR_TEMPLATE = "    uint256 public {var};\n"
 
@@ -45,11 +43,11 @@ ORACLE_FUNCTION_TEMPLATE = """
 """
 
 
-# ─── Utilitas Regex ───────────────────────────────────────────────────────────
+# Utilitas Regex
 
 # Menemukan mapping(address => uint256) yang berkaitan dengan balance/deposit
 MAPPING_PATTERN = re.compile(
-    r"mapping\s*\(\s*address\s*=>\s*uint256\s*\)\s+(?:public\s+)?(\w+)\s*;",
+    r"mapping\s*\(\s*address[\s\w]*=>\s*uint(?:256)?[\s\w]*\)\s+(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
     re.IGNORECASE,
 )
 
@@ -75,7 +73,7 @@ PAYABLE_FUNC_PATTERN = re.compile(
 )
 
 
-# ─── Fungsi Utama ─────────────────────────────────────────────────────────────
+# Fungsi Utama
 
 def _find_target_mapping(source: str) -> Optional[str]:
     """
@@ -214,14 +212,14 @@ def instrument_contract(
     with open(input_path, "r", encoding="utf-8", errors="ignore") as f:
         source = f.read()
 
-    # ── 1. Deteksi nama kontrak utama ──────────────────────────────────────
+    # 1. Deteksi nama kontrak
     contract_name = _detect_contract_name(source)
     if contract_name is None:
         log.error("Tidak dapat mendeteksi nama kontrak pada: %s", input_path)
         return False
     log.debug("Nama kontrak terdeteksi: %s", contract_name)
 
-    # ── 2. Deteksi mapping variabel target ─────────────────────────────────
+    # 2. Deteksi mapping variabel target
     mapping_var = _find_target_mapping(source)
     if mapping_var:
         log.debug("Mapping variabel target: %s", mapping_var)
@@ -229,16 +227,16 @@ def instrument_contract(
         log.warning("Tidak ada mapping variabel ditemukan. Pelacak akan mengandalkan msg.value.")
         mapping_var = "contributors"  # default fallback
 
-    # ── 3. Sisipkan variabel pelacak ───────────────────────────────────────
+    # 3. Sisipkan variabel pelacak
     source = _insert_tracker_variable(source, contract_name)
 
-    # ── 4. Sisipkan logika pelacak ─────────────────────────────────────────
+    # 4. Sisipkan logika pelacak
     source = _insert_tracking_logic(source, mapping_var)
 
-    # ── 5. Sisipkan fungsi oracle ──────────────────────────────────────────
+    # 5. Sisipkan fungsi oracle
     source = _insert_oracle_function(source)
 
-    # ── 6. Tulis file hasil ────────────────────────────────────────────────
+    # 6. Tulis file hasil
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(source)
@@ -286,7 +284,7 @@ def run_instrumentation(base_dir: str = BASE_CONTRACTS_DIR,
     return results
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────────
+# Entry Point
 if __name__ == "__main__":
     import sys
     if len(sys.argv) == 3:
