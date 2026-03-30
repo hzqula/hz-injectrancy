@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// src: https://gist.github.com/CodeWithJoe2020/9c140df7c13453fd690d28614c18d0c9
+// src -> https://gist.github.com/CodeWithJoe2020/9c140df7c13453fd690d28614c18d0c9
 
 pragma solidity >=0.8.0;
 
