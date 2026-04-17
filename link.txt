@@ -1,0 +1,10 @@
+https://github.com/InPlusLab/ReentrancyStudy-Data/blob/main/deduplicated_smart_contracts/0x0000000011c6fda753efec35c5c484004450cc6c.sol
+
+[BISA] https://github.com/InPlusLab/ReentrancyStudy-Data/blob/main/deduplicated_smart_contracts/0x00000000454a11ca3a574738c0aab442b62d5d45.sol
+
+[KANDIDAT] https://github.com/InPlusLab/ReentrancyStudy-Data/blob/main/deduplicated_smart_contracts/0x00000000fffd97acdc8c5585c818f6b0f946c0ed.sol
+
+[KANDIDAT] https://github.com/InPlusLab/ReentrancyStudy-Data/blob/main/deduplicated_smart_contracts/0x00000004781a827bc3d836e840d23d2b875eb0d3.sol
+
+[KANDIDAT] https://github.com/InPlusLab/ReentrancyStudy-Data/blob/main/deduplicated_smart_contracts/0x0000000de40dfa9b17854cbc7869d80f9f98d823.sol
+
