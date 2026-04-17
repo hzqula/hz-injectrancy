@@ -71,7 +71,7 @@ class EchidnaResult:
 
 # Konfigurasi YAML Echidna
 
-def _generate_echidna_config(output_path: str) -> str:
+def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path: Optional[str]) -> str:
     """
     Menghasilkan file konfigurasi YAML untuk Echidna.
     Referensi: Proposal Bab 3.6.1 (Konfigurasi Echidna)
@@ -89,6 +89,31 @@ def _generate_echidna_config(output_path: str) -> str:
         # Mode testing: property (menguji fungsi echidna_*)
         "testMode":       "property",
     }
+
+    needs_rpc = False
+
+    # Kumpulkan file yang mau dicek (Kontrak asli + Wrapper jika ada)
+    files_to_check = [contract_path]
+    if wrapper_path:
+        files_to_check.append(wrapper_path)
+
+    # Cek apakah ada alamat Chainlink atau keyword Oracle di dalam kode
+    for filepath in files_to_check:
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+                # Jika ada alamat asli Chainlink atau import Chainlink
+                if "0x694AA1769357215DE4FAC081bf1f309aDC325306" in content or "Chainlink" in content or "AggregatorV3Interface" in content:
+                    needs_rpc = True
+                    break
+
+    from config import RPC_URL 
+    
+    # Hanya masukkan rpcUrl JIKA file .env ada DAN kontraknya butuh RPC
+    if RPC_URL and needs_rpc:
+        config_data["rpcUrl"] = RPC_URL
+        # Log ini sekarang hanya akan muncul jika benar-benar butuh RPC!
+        log.info("   [!] Fitur Mainnet Forking Aktif")
 
     config_str = yaml.dump(config_data, default_flow_style=False)
 
@@ -156,51 +181,80 @@ def _detect_contract_name_in_file(filepath: str) -> Optional[str]:
     return None
 
 # Fungsi echidna wrapper
+# Fungsi echidna wrapper
 def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: str) -> Optional[str]:
     """
-    Membuat file wrapper otomatis dengan Pre-Conditioning (Harnessing).
+    Membuat file wrapper secara OTOMATIS (Dynamic Auto-Harnessing).
+    Membaca parameter konstruktor dan membuat argumen dummy secara dinamis.
     """
     with open(contract_path, "r", encoding="utf-8") as f:
         source = f.read()
 
-    # Cek apakah ini kontrak CrowdFunding yang butuh konstruktor
-    if "constructor(uint256 _target, uint256 _deadline)" in source:
-        wrapper_name = f"{contract_name}Echidna"
-        wrapper_filename = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
-        wrapper_path = os.path.join(result_dir, wrapper_filename)
-        
-        # Buat isi file wrapper dengan injeksi saldo paksa
-        wrapper_code = f"""// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.7;
+    # Cari blok constructor menggunakan Regex
+    constructor_match = re.search(r"constructor\s*\((.*?)\)", source, re.DOTALL)
+    
+    # Jika tidak ada constructor, atau constructor kosong "constructor()", tidak perlu wrapper
+    if not constructor_match or not constructor_match.group(1).strip():
+        return None
 
+    # Ekstrak parameter
+    params_str = constructor_match.group(1).strip()
+    params_list = [p.strip() for p in params_str.split(",") if p.strip()]
+    
+    dummy_args = []
+    for param in params_list:
+        parts = param.split()
+        p_type = parts[0].lower()
+        p_name = parts[-1].lower() if len(parts) > 1 else ""
+        
+        # Mapping tipe data ke nilai dummy (Auto-Fill Heuristik)
+        if "uint" in p_type or "int" in p_type:
+            # HEURISTIK WAKTU: Jika nama variabel berbau waktu, kasih tahun 2286
+            if "time" in p_name or "deadline" in p_name or "duration" in p_name or "end" in p_name:
+                dummy_args.append("9999999999") 
+            else:
+                dummy_args.append("1000")        # Default angka biasa
+                
+        elif "address" in p_type:
+            # HEURISTIK ORACLE: Jika butuh price feed, kasih alamat ASLI Sepolia
+            if "price" in p_name or "feed" in p_name or "oracle" in p_name or "aggregator" in p_name:
+                dummy_args.append("address(0x694AA1769357215DE4FAC081bf1f309aDC325306)")
+            else:
+                dummy_args.append("address(0x10000)") # Default alamat acak Echidna
+        elif "bool" in p_type:
+            dummy_args.append("true")        # Default boolean
+        elif "string" in p_type:
+            dummy_args.append('"Test"')      # Default string
+        elif "bytes" in p_type:
+            dummy_args.append('""')          # Default bytes kosong
+        else:
+            dummy_args.append("0")           # Fallback angka 0
+
+    # Gabungkan argumen dummy (contoh hasil: "address(0x10000), 1000")
+    args_string = ", ".join(dummy_args)
+
+    wrapper_name = f"{contract_name}Echidna"
+    wrapper_filename = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
+    wrapper_path = os.path.join(result_dir, wrapper_filename)
+
+    # Buat kode wrapper dinamis
+    wrapper_code = f"""// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 import "../../injected_contracts/{os.path.basename(contract_path)}";
 
 contract {wrapper_name} is {contract_name} {{
-    // Gunakan payable agar bisa menerima ether awal jika butuh
-    constructor() {contract_name}(1000, 86400) payable {{
-        // PRE-CONDITIONING (HARNESS):
-        // Bypass fungsi contribute() yang membatasi fuzzer.
-        // Kita langsung berikan saldo kepada msg.sender (deployer)
-        // dan alamat default Echidna (0x10000, 0x20000, 0x30000)
-        
-        contributors[msg.sender] = 500;
-        contributors[address(0x10000)] = 500;
-        contributors[address(0x20000)] = 500;
-        
-        totalDeposits += 1500;
-        raisedAmount += 1500;
+    // Auto-Generated Constructor Arguments: {args_string}
+    constructor() {contract_name}({args_string}) payable {{
+        // Auto-Harnessing selesai. Echidna siap melakukan fuzzing.
     }}
 }}
 """
-        with open(wrapper_path, "w", encoding="utf-8") as wf:
-            wf.write(wrapper_code)
-            
-        return wrapper_path
-    
-    return None
+    with open(wrapper_path, "w", encoding="utf-8") as wf:
+        wf.write(wrapper_code)
+        
+    return wrapper_path
 
 # Fungsi Runner Echidna
-
 def run_echidna_on_contract(
     contract_path: str,
     result_dir: str,
@@ -234,13 +288,14 @@ def run_echidna_on_contract(
 
     os.makedirs(result_dir, exist_ok=True)
 
-    # Generate konfigurasi YAML 
-    config_path = _generate_echidna_config(result_dir)
-
+    # generate wrapper
     wrapper_path = _create_echidna_wrapper(contract_path, result_dir, contract_name)
 
+    # generate konfigurasi YAML 
+    config_path = _generate_echidna_config(result_dir, contract_path, wrapper_path)
+
     if wrapper_path:
-        log.info(f"  [!] Kontrak butuh konstruktor. Wrapper dibuat: {os.path.basename(wrapper_path)}")
+        log.info(f" [!] Kontrak butuh konstruktor. Wrapper dibuat: {os.path.basename(wrapper_path)}")
         contract_path = wrapper_path
         contract_name = f"{contract_name}Echidna" # Gunakan nama kontrak wrapper
 
