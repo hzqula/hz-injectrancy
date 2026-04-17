@@ -29,6 +29,9 @@ log = get_logger("injector")
 # Template Bug Reentrancy
 
 SINGLE_FUNCTION_TEMPLATE = """
+    // [INJECTED] Fallback state variable
+    mapping(address => uint256) public balances;
+
     // [BUG-INJECTED] Single-Function Reentrancy
     // Pola: CEI (Check-Effects-Interactions) dilanggar
     // Transfer dilakukan SEBELUM state diperbarui
@@ -44,6 +47,9 @@ SINGLE_FUNCTION_TEMPLATE = """
 """
 
 CROSS_FUNCTION_TEMPLATE = """
+    // [INJECTED] Fallback state variable
+    mapping(address => uint256) public balances;
+
     // [BUG-INJECTED] Cross-Function Reentrancy
     // Pola: Dua fungsi berbagi state yang belum konsisten
     // Fungsi pertama: withdraw tanpa update state
