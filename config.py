@@ -4,6 +4,7 @@ Diadaptasi dari SolidiFI untuk evaluasi analisis dinamis dengan Echidna
 """
 
 import os
+from dotenv import load_dotenv
 
 # Direktori 
 BASE_DIR              = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +15,12 @@ ECHIDNA_RESULTS_DIR   = os.path.join(BASE_DIR, "echidna_results")
 ANALYSIS_RESULTS_DIR  = os.path.join(BASE_DIR, "analysis_results")
 BUG_PATTERNS_DIR      = os.path.join(BASE_DIR, "bug_patterns")
 LOGS_DIR              = os.path.join(BASE_DIR, "logs")
+
+# Load env
+load_dotenv()
+
+# URL RPC
+RPC_URL = os.getenv("ALCHEMY_RPC_URL")
 
 # Varian Bug Reentrancy
 BUG_VARIANTS = [
