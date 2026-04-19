@@ -30,15 +30,16 @@ BUG_VARIANTS = [
 
 # Konfigurasi Echidna 
 ECHIDNA_CONFIG = {
-    "testLimit":   1000000,   # Jumlah test case
-    "seqLen":      100,      # Panjang sequence transaksi
-    "shrinkLimit": 5000,     # Batas iterasi shrinking
-    "coverage":    True,     # Coverage-guided fuzzing
-    "timeout":     300,      # Timeout per kontrak (detik)
-    "deployer":    "0x30000000000000000000000000000000000000000",  # Alamat deployer
-    "sender":      ["0x20000000000000000000000000000000000000000"],
-    "balanceAddr": 10000,    # Saldo awal dalam Ether
+    "testLimit":   150000,   
+    "seqLen":      100,       
+    "shrinkLimit": 5000,      
+    "coverage":    True,     
+    "timeout":     180,       
+    "deployer":    "0x30000000000000000000000000000000000000000",
+    "sender":      ["0x30000000000000000000000000000000000000000"],
+    "balanceAddr": 10000,
     "balanceContract": 0,
+    "maxTimeDelay": 3600,
 }
 
 # Versi Solidity
@@ -50,11 +51,11 @@ ORACLE_FUNCTION_PREFIX = "echidna_"
 ORACLE_FUNCTION_NAME   = "echidna_cek_saldo"
 
 # Nama Variabel Pelacak 
-TRACKER_VAR_NAME = "totalDeposits"
+TRACKER_VAR_NAME = "totalDepositsHZ"
 
 # Timeout
-COMPILATION_TIMEOUT = 30   # detik
-ECHIDNA_TIMEOUT     = 300  # detik per kontrak
+COMPILATION_TIMEOUT = 30   
+ECHIDNA_TIMEOUT     = 195
 
 # Logging
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
