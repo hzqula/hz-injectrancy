@@ -155,23 +155,42 @@ def _insert_tracking_logic(source: str, mapping_var: str) -> str:
     return result
 
 
-def _insert_oracle_function(source: str) -> str:
+def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: str) -> str:
     """
-    Menyisipkan fungsi oracle Echidna sebelum kurung kurawal penutup
-    kontrak terakhir.
+    Mencari akhir dari kontrak utama yang spesifik menggunakan brace matching.
+    """
+    import re
+    pattern = r"contract\s+" + re.escape(contract_name) + r"\s*\{"
+    match = re.search(pattern, source)
+    
+    if not match:
+        last_brace = source.rfind("}")
+        return source[:last_brace] + code_to_insert + "\n" + source[last_brace:]
+
+    start_idx = match.end() - 1
+    brace_count = 0
+    
+    for i in range(start_idx, len(source)):
+        if source[i] == '{':
+            brace_count += 1
+        elif source[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                return source[:i] + "\n" + code_to_insert + "\n" + source[i:]
+                
+    return source
+
+def _insert_oracle_function(source: str, contract_name: str) -> str:
+    """
+    Menyisipkan fungsi oracle Echidna di dalam blok kontrak utama.
     """
     oracle_code = ORACLE_FUNCTION_TEMPLATE.format(
         oracle_name=ORACLE_FUNCTION_NAME,
         var=TRACKER_VAR_NAME,
     )
 
-    # Temukan posisi kurung tutup terakhir
-    last_brace_pos = source.rfind("}")
-    if last_brace_pos == -1:
-        log.error("Tidak menemukan kurung kurawal penutup kontrak.")
-        return source
-
-    result = source[:last_brace_pos] + oracle_code + "\n" + source[last_brace_pos:]
+    # Gunakan fungsi pencari kurung kurawal yang baru!
+    result = _insert_at_end_of_contract(source, contract_name, oracle_code)
     log.debug("Fungsi oracle '%s' berhasil disisipkan.", ORACLE_FUNCTION_NAME)
     return result
 
@@ -234,8 +253,7 @@ def instrument_contract(
     source = _insert_tracking_logic(source, mapping_var)
 
     # 5. Sisipkan fungsi oracle
-    source = _insert_oracle_function(source)
-
+    source = _insert_oracle_function(source, contract_name)
     # 6. Tulis file hasil
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
