@@ -90,6 +90,9 @@ def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path:
         "testMode":       "property",
     }
 
+    if "maxTimeDelay" in ECHIDNA_CONFIG:
+        config_data["maxTimeDelay"] = ECHIDNA_CONFIG["maxTimeDelay"]
+
     needs_rpc = False
 
     # Kumpulkan file yang mau dicek (Kontrak asli + Wrapper jika ada)
@@ -113,7 +116,7 @@ def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path:
     if RPC_URL and needs_rpc:
         config_data["rpcUrl"] = RPC_URL
         # Log ini sekarang hanya akan muncul jika benar-benar butuh RPC!
-        log.info("   [!] Fitur Mainnet Forking Aktif")
+        log.info("  [!] Fitur Mainnet Forking Aktif")
 
     config_str = yaml.dump(config_data, default_flow_style=False)
 
@@ -295,7 +298,7 @@ def run_echidna_on_contract(
     config_path = _generate_echidna_config(result_dir, contract_path, wrapper_path)
 
     if wrapper_path:
-        log.info(f" [!] Kontrak butuh konstruktor. Wrapper dibuat: {os.path.basename(wrapper_path)}")
+        log.info(f"  [!] Kontrak butuh konstruktor. Wrapper dibuat: {os.path.basename(wrapper_path)}")
         contract_path = wrapper_path
         contract_name = f"{contract_name}Echidna" # Gunakan nama kontrak wrapper
 
