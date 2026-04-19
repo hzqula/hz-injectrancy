@@ -10,7 +10,6 @@ diinstrumentasiin. Dan ngasilin dua varian kontrak per base contract:
 import os
 import re
 import json
-import shutil
 from typing import Optional, Dict, List, Tuple
 
 from config import (
@@ -25,12 +24,11 @@ from logger import get_logger
 
 log = get_logger("injector")
 
-
 # Template Bug Reentrancy
 
 SINGLE_FUNCTION_TEMPLATE = """
     // [INJECTED] Fallback state variable
-    mapping(address => uint256) public balances;
+    {dummy_mapping}
 
     // [BUG-INJECTED] Single-Function Reentrancy
     // Pola: CEI (Check-Effects-Interactions) dilanggar
@@ -48,7 +46,7 @@ SINGLE_FUNCTION_TEMPLATE = """
 
 CROSS_FUNCTION_TEMPLATE = """
     // [INJECTED] Fallback state variable
-    mapping(address => uint256) public balances;
+    {dummy_mapping}
 
     // [BUG-INJECTED] Cross-Function Reentrancy
     // Pola: Dua fungsi berbagi state yang belum konsisten
@@ -86,8 +84,6 @@ MAPPING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-CONTRACT_BODY_END_PATTERN = re.compile(r"\}\s*$", re.DOTALL)
-
 HAS_RECEIVE_PATTERN = re.compile(
     r"receive\s*\(\s*\)\s+external\s+payable",
     re.MULTILINE,
@@ -97,6 +93,7 @@ HAS_PAYABLE_FALLBACK = re.compile(
     r"fallback\s*\(\s*\)\s+external\s+payable",
     re.MULTILINE,
 )
+
 
 def _find_mapping_variable(source: str) -> Optional[str]:
     """
@@ -126,13 +123,32 @@ def _needs_payable_constructor(source: str) -> bool:
     return not (has_receive or has_fallback)
 
 
-def _insert_before_last_brace(source: str, code_to_insert: str) -> str:
-    """Menyisipkan kode sebelum kurung kurawal penutup terakhir."""
-    last_brace = source.rfind("}")
-    if last_brace == -1:
-        log.error("Tidak menemukan kurung kurawal penutup.")
-        return source
-    return source[:last_brace] + code_to_insert + "\n" + source[last_brace:]
+def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: str) -> str:
+    """
+    Mencari akhir dari kontrak utama yang spesifik menggunakan algoritma
+    penghitungan kurung kurawal (brace matching).
+    """
+    import re
+    pattern = r"contract\s+" + re.escape(contract_name) + r"\s*\{"
+    match = re.search(pattern, source)
+    
+    if not match:
+        last_brace = source.rfind("}")
+        return source[:last_brace] + code_to_insert + "\n" + source[last_brace:]
+
+    start_idx = match.end() - 1
+    brace_count = 0
+    
+    for i in range(start_idx, len(source)):
+        if source[i] == '{':
+            brace_count += 1
+        elif source[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                # KETEMU! Ini adalah penutup dari contract utama
+                return source[:i] + "\n" + code_to_insert + "\n" + source[i:]
+                
+    return source
 
 
 def _get_injection_line(source: str, pattern: str) -> int:
@@ -162,13 +178,13 @@ def inject_single_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """
-    Menyisipkan bug single-function reentrancy.
+    """Menyisipkan bug single-function reentrancy."""
+    
+    # Hanya buat mapping palsu JIKA variabelnya bernama "dummyBalancesHZ"
+    dummy_code = f"mapping(address => uint256) public {mapping_var};" if mapping_var == "dummyBalancesHZ" else ""
 
-    Return:
-        (source_dengan_bug, injection_log_entry)
-    """
     bug_code = SINGLE_FUNCTION_TEMPLATE.format(
+        dummy_mapping=dummy_code, 
         mapping_var=mapping_var,
         tracker_var=TRACKER_VAR_NAME,
     )
@@ -178,9 +194,9 @@ def inject_single_function(
         receive_code = PAYABLE_CONSTRUCTOR_TEMPLATE.format(
             tracker_var=TRACKER_VAR_NAME
         )
-        source = _insert_before_last_brace(source, receive_code)
+        source = _insert_at_end_of_contract(source, contract_name, receive_code)
 
-    injected_source = _insert_before_last_brace(source, bug_code)
+    injected_source = _insert_at_end_of_contract(source, contract_name, bug_code)
 
     # Cari nomor baris fungsi bug yang disisipkan
     injection_line = _get_injection_line(
@@ -209,13 +225,13 @@ def inject_cross_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """
-    Menyisipkan bug cross-function reentrancy.
+    """Menyisipkan bug cross-function reentrancy."""
+    
+    # Hanya buat mapping palsu JIKA variabelnya bernama "dummyBalancesHZ"
+    dummy_code = f"mapping(address => uint256) public {mapping_var};" if mapping_var == "dummyBalancesHZ" else ""
 
-    Return:
-        (source_dengan_bug, injection_log_entry)
-    """
     bug_code = CROSS_FUNCTION_TEMPLATE.format(
+        dummy_mapping=dummy_code,     # <--- Tambahan baru
         mapping_var=mapping_var,
         tracker_var=TRACKER_VAR_NAME,
     )
@@ -225,9 +241,9 @@ def inject_cross_function(
         receive_code = PAYABLE_CONSTRUCTOR_TEMPLATE.format(
             tracker_var=TRACKER_VAR_NAME
         )
-        source = _insert_before_last_brace(source, receive_code)
+        source = _insert_at_end_of_contract(source, contract_name, receive_code)
 
-    injected_source = _insert_before_last_brace(source, bug_code)
+    injected_source = _insert_at_end_of_contract(source, contract_name, bug_code)
 
     injection_line = _get_injection_line(
         injected_source, "bug_reentrancy_cross_withdraw"
@@ -267,17 +283,7 @@ def inject_contract(
     output_dir: str,
     variants: List[str] = BUG_VARIANTS,
 ) -> Dict[str, dict]:
-    """
-    Menyuntikkan semua varian bug ke satu kontrak.
-
-    Parameter:
-        input_path : path ke kontrak terinstrumentasi
-        output_dir : direktori output untuk kontrak ter-inject
-        variants   : list varian bug yang akan disuntikkan
-
-    Return:
-        dict: {"single_function": log_entry, "cross_function": log_entry, ...}
-    """
+    """Menyuntikkan semua varian bug ke satu kontrak."""
     fname = os.path.basename(input_path)
     stem  = os.path.splitext(fname)[0]   # nama tanpa ekstensi
     results = {}
@@ -302,7 +308,7 @@ def inject_contract(
             "Tidak ada mapping variabel pada '%s'. "
             "Bug mungkin tidak optimal, menggunakan nama default.", fname
         )
-        mapping_var = "balances"  # default fallback
+        mapping_var = "dummyBalancesHZ"
 
     log.info("  Kontrak : %s | Mapping: %s", contract_name, mapping_var)
 
@@ -346,19 +352,7 @@ def run_injection(
     valid_files: list     = None,
     variants: List[str]   = BUG_VARIANTS,
 ) -> List[dict]:
-    """
-    Menjalankan injeksi bug untuk semua kontrak terinstrumentasi yang valid.
-
-    Parameter:
-        instrumented_dir : direktori kontrak terinstrumentasi
-        output_dir       : direktori output kontrak ter-inject
-        valid_files      : list nama file yang lulus verifikasi kompilasi
-                           (None = proses semua file .sol di direktori)
-        variants         : varian bug yang akan disuntikkan
-
-    Return:
-        list semua injection log entries
-    """
+    """Menjalankan injeksi bug untuk semua kontrak terinstrumentasi yang valid."""
     os.makedirs(output_dir, exist_ok=True)
 
     if valid_files is None:
@@ -393,7 +387,7 @@ def run_injection(
             all_logs.append(entry)
             total_injected += 1
 
-    # ── Simpan injection log ke JSON ──────────────────────────────────────────
+    # Simpan injection log ke JSON
     log_path = os.path.join(LOGS_DIR, "injection_log.json")
     os.makedirs(LOGS_DIR, exist_ok=True)
     with open(log_path, "w", encoding="utf-8") as f:
@@ -411,7 +405,6 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) == 3:
-        # Mode satu file: python step3_injector.py <input.sol> <output_dir/>
         results = inject_contract(sys.argv[1], sys.argv[2])
         if results:
             print(f"Berhasil menyuntikkan {len(results)} varian.")
@@ -419,7 +412,6 @@ if __name__ == "__main__":
             print("Gagal menyuntikkan bug.")
             sys.exit(1)
     else:
-        # Mode batch
         logs = run_injection()
         if not logs:
             log.error("Tidak ada bug yang berhasil disuntikkan.")
