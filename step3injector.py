@@ -34,6 +34,7 @@ SINGLE_FUNCTION_TEMPLATE = """
     // Pola: CEI (Check-Effects-Interactions) dilanggar
     // Transfer dilakukan SEBELUM state diperbarui
     function bug_reentrancy_single(uint256 _amount) public {{
+        require(_amount > 0, "Bukan eksploitasi jika amount 0");
         require({mapping_var}[msg.sender] >= _amount, "Saldo tidak cukup");
         // BUG: external call sebelum state update (pelanggaran CEI)
         (bool success, ) = msg.sender.call{{value: _amount}}("");
@@ -52,6 +53,7 @@ CROSS_FUNCTION_TEMPLATE = """
     // Pola: Dua fungsi berbagi state yang belum konsisten
     // Fungsi pertama: withdraw tanpa update state
     function bug_reentrancy_cross_withdraw(uint256 _amount) public {{
+        require(_amount > 0, "Bukan eksploitasi jika amount 0"); 
         require({mapping_var}[msg.sender] >= _amount, "Saldo tidak cukup");
         // BUG: state {mapping_var} belum dikurangi, bisa dieksploitasi oleh
         // fungsi lain (bug_reentrancy_cross_getBalance) yang membaca state ini
