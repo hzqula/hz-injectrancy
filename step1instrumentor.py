@@ -9,20 +9,17 @@ Alur:
   base_contract  →  [instrumentasi]  →  instrumented_contract
 
 Apa yang disisipkan:
-  1. State variable pelacak  : uint256 public totalDeposits;
-  2. Logika pelacak           : totalDeposits += msg.value;  (pada setiap deposit)
-  3. Fungsi oracle Echidna    : function echidna_cek_saldo() public view returns (bool)
+  1. State reentrancy: hz_is_reentered dan hz_locked
+  2. Fungsi oracle Echidna : Mengembalikan nilai !hz_is_reentered
 """
 
 import os
 import re
-import shutil
 from typing import Optional
 
 from config import (
     BASE_CONTRACTS_DIR,
     INSTRUMENTED_DIR,
-    TRACKER_VAR_NAME,
     ORACLE_FUNCTION_NAME,
 )
 from logger import get_logger
@@ -32,80 +29,38 @@ log = get_logger("instrumentor")
 
 # Template Kode yang Disisipkan
 
-TRACKER_VAR_TEMPLATE = "    uint256 public {var};\n"
+TRACKER_VAR_TEMPLATE = """
+    // Deteksi pelacak
+    bool public hz_is_reentered = false;
+    bool private hz_locked = false;
+"""
 
 ORACLE_FUNCTION_TEMPLATE = """
-    // [ORACLE] Echidna property: saldo kontrak harus >= totalDeposits
-    // Pelanggaran invariant ini menandakan aktivasi kerentanan reentrancy
+    // [ORACLE] Echidna property
+    // Pelanggaran invariant ini menandakan fuzzer berhasil melakukan eksekusi ganda (reentrant)
     function {oracle_name}() public view returns (bool) {{
-        return address(this).balance >= {var};
+        return !hz_is_reentered;
     }}
 """
 
-
 # Utilitas Regex
-
-# Menemukan mapping(address => uint256) yang berkaitan dengan balance/deposit
-MAPPING_PATTERN = re.compile(
-    r"mapping\s*\(\s*address[\s\w]*=>\s*uint(?:256)?[\s\w]*\)\s+(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
-    re.IGNORECASE,
-)
-
-# Menemukan pembukaan blok kontrak utama (hanya yang bukan interface/library)
 CONTRACT_OPEN_PATTERN = re.compile(
     r"^(contract\s+\w+[^{]*)\{",
     re.MULTILINE,
 )
 
-# Menemukan penutup blok kontrak (kurung kurawal terakhir)
-LAST_BRACE_PATTERN = re.compile(r"\}\s*$", re.DOTALL)
-
-# Menemukan operasi += msg.value  (deposit ether)
-DEPOSIT_PATTERN = re.compile(
-    r"([\w\[\]\.]+\s*\+=\s*msg\.value\s*;)",
-    re.MULTILINE,
-)
-
-# payable function yang mungkin menerima ether
-PAYABLE_FUNC_PATTERN = re.compile(
-    r"function\s+(\w+)\s*\([^)]*\)\s+(?:[a-zA-Z\s]*)?payable(?:[a-zA-Z\s]*)?\{",
-    re.MULTILINE,
-)
-
-
 # Fungsi Utama
-
-def _find_target_mapping(source: str) -> Optional[str]:
-    """
-    Mencari nama mapping variabel yang paling relevan untuk dijadikan
-    target pelacakan. Prioritas: nama yang mengandung kata 'balance',
-    'deposit', 'contribution'. Jika tidak ada, gunakan yang pertama.
-    """
-    matches = MAPPING_PATTERN.findall(source)
-    if not matches:
-        return None
-
-    priority_keywords = ["balance", "deposit", "contribution", "amount", "fund"]
-    for kw in priority_keywords:
-        for name in matches:
-            if kw.lower() in name.lower():
-                return name
-
-    return matches[0]
-
 
 def _insert_tracker_variable(source: str, contract_name: str) -> str:
     """
-    Menyisipkan variabel pelacak (totalDeposits) tepat setelah
+    Menyisipkan variabel pelacak (hz_locked & hz_is_reentered) tepat setelah
     pembukaan blok kontrak utama.
     """
-    # Cari pembukaan blok kontrak (bukan interface/library)
     lines = source.split("\n")
     insert_idx = None
 
     for i, line in enumerate(lines):
         stripped = line.strip()
-        # Tandai baris 'contract NamaKontrak {' (bukan interface/library)
         if (
             stripped.startswith("contract ")
             and contract_name in stripped
@@ -116,43 +71,18 @@ def _insert_tracker_variable(source: str, contract_name: str) -> str:
 
     if insert_idx is None:
         log.warning("Tidak menemukan blok kontrak '%s', sisipkan di awal file.", contract_name)
-        # Fallback: sisipkan setelah baris pragma
         for i, line in enumerate(lines):
             if line.strip().startswith("contract ") and "{" in line:
                 insert_idx = i + 1
                 break
 
     if insert_idx is None:
-        log.error("Gagal menemukan lokasi sisipan variabel tracker.")
+        log.error("Gagal menemukan lokasi sisipan variabel pelacak.")
         return source
 
-    tracker_line = TRACKER_VAR_TEMPLATE.format(var=TRACKER_VAR_NAME)
-    lines.insert(insert_idx, tracker_line)
-    log.debug("Variabel '%s' disisipkan pada baris %d.", TRACKER_VAR_NAME, insert_idx + 1)
+    lines.insert(insert_idx, TRACKER_VAR_TEMPLATE)
+    log.debug("Variabel pelacak disisipkan pada baris %d.", insert_idx + 1)
     return "\n".join(lines)
-
-
-def _insert_tracking_logic(source: str, mapping_var: str) -> str:
-    """
-    Menyisipkan logika pelacak setelah setiap operasi += msg.value
-    yang ditemukan dalam kode sumber.
-    Tracking: totalDeposits += msg.value;
-    """
-    tracker_stmt = f"        {TRACKER_VAR_NAME} += msg.value; // [TRACKER]\n"
-
-    def replacer(match):
-        original = match.group(1)
-        return original + "\n" + tracker_stmt.rstrip()
-
-    result, count = DEPOSIT_PATTERN.subn(replacer, source)
-    if count > 0:
-        log.debug("Logika pelacak disisipkan pada %d lokasi deposit.", count)
-    else:
-        log.warning(
-            "Tidak ditemukan operasi '+= msg.value'. "
-            "Pelacak mungkin tidak optimal untuk kontrak ini."
-        )
-    return result
 
 
 def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: str) -> str:
@@ -165,7 +95,7 @@ def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: 
     
     if not match:
         last_brace = source.rfind("}")
-        return source[:last_brace] + code_to_insert + "\n" + source[last_brace:]
+        return source[:last_brace] + "\n" + code_to_insert + "\n" + source[last_brace:]
 
     start_idx = match.end() - 1
     brace_count = 0
@@ -185,11 +115,8 @@ def _insert_oracle_function(source: str, contract_name: str) -> str:
     Menyisipkan fungsi oracle Echidna di dalam blok kontrak utama.
     """
     oracle_code = ORACLE_FUNCTION_TEMPLATE.format(
-        oracle_name=ORACLE_FUNCTION_NAME,
-        var=TRACKER_VAR_NAME,
+        oracle_name=ORACLE_FUNCTION_NAME
     )
-
-    # Gunakan fungsi pencari kurung kurawal yang baru!
     result = _insert_at_end_of_contract(source, contract_name, oracle_code)
     log.debug("Fungsi oracle '%s' berhasil disisipkan.", ORACLE_FUNCTION_NAME)
     return result
@@ -200,28 +127,13 @@ def _detect_contract_name(source: str) -> Optional[str]:
     for line in source.split("\n"):
         stripped = line.strip()
         if stripped.startswith("contract ") and "{" in stripped:
-            # Ambil nama kontrak
             parts = stripped.split()
             if len(parts) >= 2:
                 return parts[1].split("(")[0].split("{")[0].strip()
     return None
 
 
-def instrument_contract(
-    input_path: str,
-    output_path: str,
-) -> bool:
-    """
-    Melakukan instrumentasi oracle pada satu kontrak.
-
-    Parameter:
-        input_path  : path ke kontrak bersih (base contract)
-        output_path : path tujuan kontrak yang sudah diinstrumentasi
-
-    Return:
-        True  jika berhasil
-        False jika gagal
-    """
+def instrument_contract(input_path: str, output_path: str) -> bool:
     log.info("Menginstumentasi: %s", os.path.basename(input_path))
 
     if not os.path.isfile(input_path):
@@ -231,30 +143,16 @@ def instrument_contract(
     with open(input_path, "r", encoding="utf-8", errors="ignore") as f:
         source = f.read()
 
-    # 1. Deteksi nama kontrak
     contract_name = _detect_contract_name(source)
     if contract_name is None:
         log.error("Tidak dapat mendeteksi nama kontrak pada: %s", input_path)
         return False
     log.debug("Nama kontrak terdeteksi: %s", contract_name)
 
-    # 2. Deteksi mapping variabel target
-    mapping_var = _find_target_mapping(source)
-    if mapping_var:
-        log.debug("Mapping variabel target: %s", mapping_var)
-    else:
-        log.warning("Tidak ada mapping variabel ditemukan. Pelacak akan mengandalkan msg.value.")
-        mapping_var = "contributors"  # default fallback
-
-    # 3. Sisipkan variabel pelacak
+    # Sisipkan Pelacak & Oracle
     source = _insert_tracker_variable(source, contract_name)
-
-    # 4. Sisipkan logika pelacak
-    source = _insert_tracking_logic(source, mapping_var)
-
-    # 5. Sisipkan fungsi oracle
     source = _insert_oracle_function(source, contract_name)
-    # 6. Tulis file hasil
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(source)
@@ -263,14 +161,7 @@ def instrument_contract(
     return True
 
 
-def run_instrumentation(base_dir: str = BASE_CONTRACTS_DIR,
-                        output_dir: str = INSTRUMENTED_DIR) -> dict:
-    """
-    Menjalankan instrumentasi untuk semua kontrak dalam direktori base.
-
-    Return:
-        dict berisi hasil per file: {"filename": True/False, ...}
-    """
+def run_instrumentation(base_dir: str = BASE_CONTRACTS_DIR, output_dir: str = INSTRUMENTED_DIR) -> dict:
     os.makedirs(output_dir, exist_ok=True)
     results = {}
 
@@ -301,16 +192,12 @@ def run_instrumentation(base_dir: str = BASE_CONTRACTS_DIR,
     log.info("Instrumentasi selesai: %d/%d berhasil", success_count, len(sol_files))
     return results
 
-
-# Entry Point
 if __name__ == "__main__":
     import sys
     if len(sys.argv) == 3:
-        # Mode satu file: python step1_instrumentor.py <input.sol> <output.sol>
         ok = instrument_contract(sys.argv[1], sys.argv[2])
         sys.exit(0 if ok else 1)
     else:
-        # Mode batch: instrumentasi semua kontrak di base_contracts/
         results = run_instrumentation()
         failed = [k for k, v in results.items() if not v]
         if failed:
