@@ -1,8 +1,8 @@
 """
 STEP 3 - BUG INJECTION
 =================================
-Nyisipin pola kerentanan reentrancy ke dalam kontrak yang udah
-diinstrumentasiin. Dan ngasilin dua varian kontrak per base contract:
+Menyisipkan pola kerentanan reentrancy ke dalam kontrak yang sudah
+diinstrumentasikan. Menghasilkan dua varian kontrak per base contract:
   - single_function reentrancy
   - cross_function reentrancy
 """
@@ -16,7 +16,6 @@ from config import (
     INSTRUMENTED_DIR,
     INJECTED_DIR,
     BUG_VARIANTS,
-    TRACKER_VAR_NAME,
     ORACLE_FUNCTION_NAME,
     LOGS_DIR,
 )
@@ -31,17 +30,28 @@ SINGLE_FUNCTION_TEMPLATE = """
     {dummy_mapping}
 
     // [BUG-INJECTED] Single-Function Reentrancy
-    // Pola: CEI (Check-Effects-Interactions) dilanggar
-    // Transfer dilakukan SEBELUM state diperbarui
     function bug_reentrancy_single(uint256 _amount) public {{
+        // Otomatis isi saldo agar Proxy Echidna bisa masuk ke fase reentrancy
+        if ({mapping_var}[msg.sender] < _amount) {{
+            unchecked {{ {mapping_var}[msg.sender] += _amount; }}
+        }}
+
         require(_amount > 0, "Bukan eksploitasi jika amount 0");
         require({mapping_var}[msg.sender] >= _amount, "Saldo tidak cukup");
-        // BUG: external call sebelum state update (pelanggaran CEI)
+
+        // Jika dipanggil kedua kalinya, nyalakan alarm!
+        if (hz_locked) {{ hz_is_reentered = true; }}
+        hz_locked = true;
+
         (bool success, ) = msg.sender.call{{value: _amount}}("");
         require(success, "Transfer gagal");
-        // State seharusnya diperbarui SEBELUM external call
-        {mapping_var}[msg.sender] -= _amount;
-        {tracker_var} -= _amount;
+
+        // Mematikan pelindung underflow bawaan 0.8+
+        unchecked {{
+            {mapping_var}[msg.sender] -= _amount;
+        }}
+        
+        hz_locked = false; // Buka kunci setelah selesai
     }}
 """
 
@@ -50,37 +60,44 @@ CROSS_FUNCTION_TEMPLATE = """
     {dummy_mapping}
 
     // [BUG-INJECTED] Cross-Function Reentrancy
-    // Pola: Dua fungsi berbagi state yang belum konsisten
-    // Fungsi pertama: withdraw tanpa update state
     function bug_reentrancy_cross_withdraw(uint256 _amount) public {{
+        // Otomatis isi saldo agar Proxy Echidna bisa masuk ke fase reentrancy
+        if ({mapping_var}[msg.sender] < _amount) {{
+            unchecked {{ {mapping_var}[msg.sender] += _amount; }}
+        }}
+
         require(_amount > 0, "Bukan eksploitasi jika amount 0"); 
         require({mapping_var}[msg.sender] >= _amount, "Saldo tidak cukup");
-        // BUG: state {mapping_var} belum dikurangi, bisa dieksploitasi oleh
-        // fungsi lain (bug_reentrancy_cross_getBalance) yang membaca state ini
+
+        if (hz_locked) {{ hz_is_reentered = true; }}
+        hz_locked = true;
+
         (bool success, ) = msg.sender.call{{value: _amount}}("");
         require(success, "Transfer gagal");
-        {mapping_var}[msg.sender] -= _amount;
-        {tracker_var} -= _amount;
+        
+        // Mematikan pelindung underflow bawaan 0.8+
+        unchecked {{
+            {mapping_var}[msg.sender] -= _amount;
+        }}
+        
+        hz_locked = false;
     }}
 
-    // Fungsi kedua: membaca state yang mungkin belum konsisten
     function bug_reentrancy_cross_getBalance() public view returns (uint256) {{
-        // BUG: state bisa dibaca saat cross-function reentrancy terjadi
         return {mapping_var}[msg.sender];
     }}
 """
 
-# Constructor/receive function buat bug yang perlu payable
+# Receive function kosong (Kita tidak perlu track manual lagi)
 PAYABLE_CONSTRUCTOR_TEMPLATE = """
     // [INJECTED] Receive function untuk mendukung pengiriman ether
     receive() external payable {{
-        {tracker_var} += msg.value;
+        // Ether diterima secara pasif
     }}
 """
 
 
 # Regex
-
 MAPPING_PATTERN = re.compile(
     r"mapping\s*\(\s*address[\s\w]*=>\s*uint(?:256)?[\s\w]*\)\s+(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
     re.IGNORECASE,
@@ -98,10 +115,6 @@ HAS_PAYABLE_FALLBACK = re.compile(
 
 
 def _find_mapping_variable(source: str) -> Optional[str]:
-    """
-    Mencari nama mapping variabel yang paling relevan.
-    Prioritas: nama yang mengandung balance/deposit/contribution.
-    """
     matches = MAPPING_PATTERN.findall(source)
     if not matches:
         return None
@@ -116,27 +129,19 @@ def _find_mapping_variable(source: str) -> Optional[str]:
 
 
 def _needs_payable_constructor(source: str) -> bool:
-    """
-    Mengecek apakah kontrak sudah memiliki receive/fallback payable.
-    Jika belum, perlu ditambahkan agar bug dapat dieksekusi.
-    """
     has_receive  = bool(HAS_RECEIVE_PATTERN.search(source))
     has_fallback = bool(HAS_PAYABLE_FALLBACK.search(source))
     return not (has_receive or has_fallback)
 
 
 def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: str) -> str:
-    """
-    Mencari akhir dari kontrak utama yang spesifik menggunakan algoritma
-    penghitungan kurung kurawal (brace matching).
-    """
     import re
     pattern = r"contract\s+" + re.escape(contract_name) + r"\s*\{"
     match = re.search(pattern, source)
     
     if not match:
         last_brace = source.rfind("}")
-        return source[:last_brace] + code_to_insert + "\n" + source[last_brace:]
+        return source[:last_brace] + "\n" + code_to_insert + "\n" + source[last_brace:]
 
     start_idx = match.end() - 1
     brace_count = 0
@@ -147,14 +152,12 @@ def _insert_at_end_of_contract(source: str, contract_name: str, code_to_insert: 
         elif source[i] == '}':
             brace_count -= 1
             if brace_count == 0:
-                # KETEMU! Ini adalah penutup dari contract utama
                 return source[:i] + "\n" + code_to_insert + "\n" + source[i:]
                 
     return source
 
 
 def _get_injection_line(source: str, pattern: str) -> int:
-    """Mendapatkan nomor baris di mana pola ditemukan."""
     lines = source.split("\n")
     for i, line in enumerate(lines, 1):
         if pattern in line:
@@ -163,7 +166,6 @@ def _get_injection_line(source: str, pattern: str) -> int:
 
 
 def _detect_main_contract_name(source: str) -> Optional[str]:
-    """Mendeteksi nama kontrak utama (non-interface, non-library)."""
     for line in source.split("\n"):
         stripped = line.strip()
         if stripped.startswith("contract ") and "{" in stripped:
@@ -180,27 +182,19 @@ def inject_single_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """Menyisipkan bug single-function reentrancy."""
     
-    # Hanya buat mapping palsu JIKA variabelnya bernama "dummyBalancesHZ"
     dummy_code = f"mapping(address => uint256) public {mapping_var};" if mapping_var == "dummyBalancesHZ" else ""
 
     bug_code = SINGLE_FUNCTION_TEMPLATE.format(
         dummy_mapping=dummy_code, 
         mapping_var=mapping_var,
-        tracker_var=TRACKER_VAR_NAME,
     )
 
-    # Tambahkan receive() jika belum ada
     if _needs_payable_constructor(source):
-        receive_code = PAYABLE_CONSTRUCTOR_TEMPLATE.format(
-            tracker_var=TRACKER_VAR_NAME
-        )
-        source = _insert_at_end_of_contract(source, contract_name, receive_code)
+        source = _insert_at_end_of_contract(source, contract_name, PAYABLE_CONSTRUCTOR_TEMPLATE)
 
     injected_source = _insert_at_end_of_contract(source, contract_name, bug_code)
 
-    # Cari nomor baris fungsi bug yang disisipkan
     injection_line = _get_injection_line(
         injected_source, "bug_reentrancy_single"
     )
@@ -209,7 +203,6 @@ def inject_single_function(
         "variant":        "single_function",
         "contract_name":  contract_name,
         "mapping_var":    mapping_var,
-        "tracker_var":    TRACKER_VAR_NAME,
         "oracle_function": ORACLE_FUNCTION_NAME,
         "injected_function": "bug_reentrancy_single",
         "injection_line": injection_line,
@@ -227,23 +220,16 @@ def inject_cross_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """Menyisipkan bug cross-function reentrancy."""
     
-    # Hanya buat mapping palsu JIKA variabelnya bernama "dummyBalancesHZ"
     dummy_code = f"mapping(address => uint256) public {mapping_var};" if mapping_var == "dummyBalancesHZ" else ""
 
     bug_code = CROSS_FUNCTION_TEMPLATE.format(
-        dummy_mapping=dummy_code,     # <--- Tambahan baru
+        dummy_mapping=dummy_code,
         mapping_var=mapping_var,
-        tracker_var=TRACKER_VAR_NAME,
     )
 
-    # Tambahkan receive() jika belum ada
     if _needs_payable_constructor(source):
-        receive_code = PAYABLE_CONSTRUCTOR_TEMPLATE.format(
-            tracker_var=TRACKER_VAR_NAME
-        )
-        source = _insert_at_end_of_contract(source, contract_name, receive_code)
+        source = _insert_at_end_of_contract(source, contract_name, PAYABLE_CONSTRUCTOR_TEMPLATE)
 
     injected_source = _insert_at_end_of_contract(source, contract_name, bug_code)
 
@@ -255,7 +241,6 @@ def inject_cross_function(
         "variant":        "cross_function",
         "contract_name":  contract_name,
         "mapping_var":    mapping_var,
-        "tracker_var":    TRACKER_VAR_NAME,
         "oracle_function": ORACLE_FUNCTION_NAME,
         "injected_functions": [
             "bug_reentrancy_cross_withdraw",
@@ -273,7 +258,6 @@ def inject_cross_function(
 
 
 # Dispatcher
-
 VARIANT_INJECTORS = {
     "single_function": inject_single_function,
     "cross_function":  inject_cross_function,
@@ -285,9 +269,8 @@ def inject_contract(
     output_dir: str,
     variants: List[str] = BUG_VARIANTS,
 ) -> Dict[str, dict]:
-    """Menyuntikkan semua varian bug ke satu kontrak."""
     fname = os.path.basename(input_path)
-    stem  = os.path.splitext(fname)[0]   # nama tanpa ekstensi
+    stem  = os.path.splitext(fname)[0] 
     results = {}
 
     if not os.path.isfile(input_path):
@@ -297,7 +280,6 @@ def inject_contract(
     with open(input_path, "r", encoding="utf-8", errors="ignore") as f:
         original_source = f.read()
 
-    # Deteksi nama kontrak dan mapping variabel
     contract_name = _detect_main_contract_name(original_source)
     mapping_var   = _find_mapping_variable(original_source)
 
@@ -329,7 +311,6 @@ def inject_contract(
             log.error("Gagal menyuntikkan varian '%s' pada '%s': %s", variant, fname, e)
             continue
 
-        # Tentukan nama file output
         output_filename = f"{stem}_{variant}.sol"
         output_path     = os.path.join(output_dir, output_filename)
 
@@ -354,7 +335,6 @@ def run_injection(
     valid_files: list     = None,
     variants: List[str]   = BUG_VARIANTS,
 ) -> List[dict]:
-    """Menjalankan injeksi bug untuk semua kontrak terinstrumentasi yang valid."""
     os.makedirs(output_dir, exist_ok=True)
 
     if valid_files is None:
@@ -389,7 +369,6 @@ def run_injection(
             all_logs.append(entry)
             total_injected += 1
 
-    # Simpan injection log ke JSON
     log_path = os.path.join(LOGS_DIR, "injection_log.json")
     os.makedirs(LOGS_DIR, exist_ok=True)
     with open(log_path, "w", encoding="utf-8") as f:
@@ -402,7 +381,6 @@ def run_injection(
     return all_logs
 
 
-# Entry Point
 if __name__ == "__main__":
     import sys
 
