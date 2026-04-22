@@ -1,7 +1,7 @@
 """
 STEP 4 - PENGUJIAN DENGAN ECHIDNA
 =================================
-Jalanin Echidna property-based fuzzer pada setiap kontrak yang
+Mengeksekusi Echidna property-based fuzzer pada setiap kontrak yang
 telah disuntikkan bug reentrancy.
 """
 
@@ -21,13 +21,13 @@ from config import (
     LOGS_DIR,
     ORACLE_FUNCTION_NAME,
     ECHIDNA_TIMEOUT,
+    RPC_URL
 )
 from logger import get_logger
 
 log = get_logger("echidna_runner")
 
-
-# Data Classes 
+# ─── Data Classes ─────────────────────────────────────────────────────────────
 
 @dataclass
 class EchidnaResult:
@@ -46,24 +46,25 @@ class EchidnaResult:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
-# Konfigurasi YAML Echidna
+# ─── Konfigurasi YAML Echidna ─────────────────────────────────────────────────
 
 def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path: Optional[str]) -> str:
     config_data = {
-        "testLimit":      ECHIDNA_CONFIG["testLimit"],
-        "seqLen":         ECHIDNA_CONFIG["seqLen"],
-        "shrinkLimit":    ECHIDNA_CONFIG["shrinkLimit"],
+        "testLimit":      ECHIDNA_CONFIG.get("testLimit", 150000),
+        "seqLen":         ECHIDNA_CONFIG.get("seqLen", 100),
+        "shrinkLimit":    ECHIDNA_CONFIG.get("shrinkLimit", 5000),
         "coverage":       True,
         "corpusDir":      os.path.abspath(os.path.join(output_path, "corpus")),
-        "timeout":        ECHIDNA_CONFIG["timeout"],
-        "deployer":       ECHIDNA_CONFIG["deployer"],
-        "sender":         ECHIDNA_CONFIG["sender"],
-        "balanceAddr":    ECHIDNA_CONFIG["balanceAddr"],
-        "balanceContract": ECHIDNA_CONFIG["balanceContract"],
+        "timeout":        ECHIDNA_CONFIG.get("timeout", 180),
+        "deployer":       ECHIDNA_CONFIG.get("deployer", "0x30000000000000000000000000000000000000000"),
+        "sender":         ECHIDNA_CONFIG.get("sender", ["0x10000000000000000000000000000000000000000"]),
         "testMode":       "property",
     }
 
+    if "balanceAddr" in ECHIDNA_CONFIG:
+        config_data["balanceAddr"] = ECHIDNA_CONFIG["balanceAddr"]
+    if "balanceContract" in ECHIDNA_CONFIG:
+        config_data["balanceContract"] = ECHIDNA_CONFIG["balanceContract"]
     if "maxTimeDelay" in ECHIDNA_CONFIG:
         config_data["maxTimeDelay"] = ECHIDNA_CONFIG["maxTimeDelay"]
 
@@ -79,7 +80,6 @@ def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path:
                     needs_rpc = True
                     break
 
-    from config import RPC_URL 
     if RPC_URL and needs_rpc:
         config_data["rpcUrl"] = RPC_URL
 
@@ -89,23 +89,18 @@ def _generate_echidna_config(output_path: str, contract_path: str, wrapper_path:
         f.write(config_str)
     return config_path
 
+# ─── Parsing Output Echidna ───────────────────────────────────────────────────
 
-# Parsing Output Echidna
-
-def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
+def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float]:
     combined = stdout + "\n" + stderr
     property_broken = bool(re.search(rf"{re.escape(ORACLE_FUNCTION_NAME)}.*failed", combined, re.IGNORECASE))
+    
     detection_time = -1.0
     time_match = re.search(r"elapsed.*?(\d+\.?\d*)\s*s", combined, re.IGNORECASE)
     if time_match and property_broken:
         detection_time = float(time_match.group(1))
 
-    bug_line_hit = False
-    if property_broken and "bug_reentrancy" in combined:
-        bug_line_hit = True
-
-    return property_broken, detection_time, bug_line_hit
-
+    return property_broken, detection_time
 
 def _detect_contract_name_in_file(filepath: str) -> Optional[str]:
     try:
@@ -120,14 +115,13 @@ def _detect_contract_name_in_file(filepath: str) -> Optional[str]:
         pass
     return None
 
-
 def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: str, variant: str) -> Optional[str]:
     with open(contract_path, "r", encoding="utf-8") as f:
         source = f.read()
 
     constructor_match = re.search(r"constructor\s*\((.*?)\)", source, re.DOTALL)
-    
     args_string = ""
+    
     if constructor_match and constructor_match.group(1).strip():
         params_list = [p.strip() for p in constructor_match.group(1).strip().split(",") if p.strip()]
         dummy_args = []
@@ -142,7 +136,6 @@ def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: 
             if "[]" in p_type:
                 base_type = p_type_raw.split("[")[0]
                 dummy_args.append(f"new {base_type}[](0)")
-                
             # 2. Tangani Tipe Data Dasar
             elif "uint" in p_type or "int" in p_type:
                 if any(kw in p_name for kw in ["time", "deadline", "duration", "end"]):
@@ -156,7 +149,6 @@ def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: 
                     dummy_args.append("address(0x694AA1769357215DE4FAC081bf1f309aDC325306)")
                 else:
                     dummy_args.append("address(0x10000)")
-            # [PENTING] bytes32 harus dicek SEBELUM bytes!
             elif "bytes32" in p_type:
                 dummy_args.append("bytes32(0)")
             elif "bytes" in p_type:
@@ -165,19 +157,13 @@ def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: 
                 dummy_args.append("true")
             elif "string" in p_type:
                 dummy_args.append('"Test"')
-                
-            # 3. Fallback untuk Interface/Custom Contract (misal: IERC20)
+            # 3. Fallback untuk Interface/Custom Contract
             else:
                 dummy_args.append(f"{p_type_raw}(address(0))")
 
         args_string = ", ".join(dummy_args)
 
-    # Pilih fungsi serangan sesuai varian kontrak
-    if variant == "single_function":
-        target_func = "bug_reentrancy_single"
-    else:
-        target_func = "bug_reentrancy_cross_withdraw"
-
+    target_func = "bug_reentrancy_single" if variant == "single_function" else "bug_reentrancy_cross_withdraw"
     wrapper_name = f"{contract_name}Echidna"
     wrapper_filename = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
     wrapper_path = os.path.join(result_dir, wrapper_filename)
@@ -199,7 +185,7 @@ contract EchidnaAttacker_{contract_name} {{
         target.{target_func}(amount);
     }}
 
-    // Fallback yang memicu reentrancy (Putar balik ke target)
+    // Fallback yang memicu reentrancy dengan aman (Mencegah Infinite Loop OOG)
     receive() external payable {{
         if (!isAttacking) {{
             isAttacking = true;
@@ -213,12 +199,10 @@ contract EchidnaAttacker_{contract_name} {{
 contract {wrapper_name} is {contract_name} {{
     EchidnaAttacker_{contract_name} public attacker;
 
-    // PAYABLE: Agar fuzzer memberikan modal ETH saat deploy
     constructor() payable {contract_name}({args_string}) {{
         attacker = new EchidnaAttacker_{contract_name}(this);
     }}
 
-    // Tombol Fuzzer
     function fuzz_attack(uint256 amount) public {{
         amount = (amount % 10 ether) + 1; // Batasi max 10 ether
         attacker.attack(amount);
@@ -230,6 +214,7 @@ contract {wrapper_name} is {contract_name} {{
         
     return wrapper_path
 
+# ─── Eksekusi Utama ───────────────────────────────────────────────────────────
 
 def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -> EchidnaResult:
     fname         = os.path.basename(contract_path)
@@ -242,14 +227,12 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
     )
 
     if not os.path.isfile(contract_path):
-        result.status        = "ERROR"
-        result.error_message = f"File tidak ditemukan: {contract_path}"
-        log.error(result.error_message)
+        result.status, result.error_message = "ERROR", f"File tidak ditemukan: {contract_path}"
+        log.error("  ✗ ERROR      | %s", result.error_message)
         return result
 
     os.makedirs(result_dir, exist_ok=True)
 
-    # PEMBUATAN WRAPPER OTOMATIS (Meneruskan variabel variant)
     wrapper_path = _create_echidna_wrapper(contract_path, result_dir, contract_name, variant)
     config_path = _generate_echidna_config(result_dir, contract_path, wrapper_path)
 
@@ -258,59 +241,42 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
         contract_path = wrapper_path
         contract_name = f"{contract_name}Echidna" 
 
-    cmd = [
-        "echidna",
-        contract_path,
-        "--config", config_path,
-        "--format", "text",
-    ]
-    
-    if contract_name:
-        cmd += ["--contract", contract_name]
+    cmd = ["echidna", contract_path, "--config", config_path, "--format", "text"]
+    if contract_name: cmd += ["--contract", contract_name]
 
     log.info("  Menjalankan Echidna: %s [%s]", fname, variant)
 
     start_time = time.time()
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=ECHIDNA_TIMEOUT,
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=ECHIDNA_TIMEOUT)
         elapsed = time.time() - start_time
-        stdout  = proc.stdout
-        stderr  = proc.stderr
+        
+        stdout, stderr = proc.stdout, proc.stderr
+        result.echidna_stdout, result.echidna_stderr = stdout, stderr
 
-        result.echidna_stdout = stdout
-        result.echidna_stderr = stderr
+        property_broken, detection_time = _parse_echidna_output(stdout, stderr)
+        bug_line_hit = False
 
-        property_broken, detection_time, bug_line_hit = _parse_echidna_output(stdout, stderr)
-
-        # Parse coverage
-        if not bug_line_hit:
-            corpus_dir = os.path.join(result_dir, "corpus")
-            if os.path.exists(corpus_dir):
-                for root, _, files in os.walk(corpus_dir):
-                    for file in files:
-                        if file.startswith("covered.") and file.endswith(".txt"):
-                            with open(os.path.join(root, file), "r", encoding="utf-8", errors="ignore") as f:
-                                for line in f:
-                                    if "msg.sender.call{value:" in line:
-                                        parts = line.split("|")
-                                        if len(parts) >= 2:
-                                            marker = parts[1].strip()
-                                            if "*" in marker or "r" in marker or "e" in marker:
-                                                bug_line_hit = True
-                                                break
-                        if bug_line_hit: break
+        # --- RADAR PELACAK YANG AKURAT (Mencari * pada hz_locked) ---
+        corpus_dir = os.path.join(result_dir, "corpus")
+        if os.path.exists(corpus_dir):
+            for root, _, files in os.walk(corpus_dir):
+                for file in files:
+                    if file.startswith("covered.") and file.endswith(".txt"):
+                        with open(os.path.join(root, file), "r", encoding="utf-8", errors="ignore") as f:
+                            for line in f:
+                                # Hanya cari marker khusus injeksi kita
+                                if "hz_locked = true" in line or "hz_is_reentered = true" in line:
+                                    parts = line.split("|")
+                                    # Pastikan baris tersebut BERHASIL DIEKSEKUSI (*), bukan REVERT (r)
+                                    if len(parts) >= 2 and "*" in parts[1]:
+                                        bug_line_hit = True
+                                        break
                     if bug_line_hit: break
+                if bug_line_hit: break
 
         result.property_broken  = property_broken
         result.bug_line_hit     = bug_line_hit
-
-        det_status = "YES" if property_broken else "NO"
-        act_status = "YES" if bug_line_hit else "NO"
 
         if proc.returncode != 0 and not property_broken:
             result.status = "ERROR"
@@ -328,23 +294,16 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
                 result.status = "NOT_DETECTED"
                 result.detection_time_sec = ECHIDNA_TIMEOUT
 
-            log.info("  DETECTED   : %s", det_status)
-            log.info("  ACTIVATED  : %s", act_status)
-            
+            log.info("  DETECTED   : %s", "YES" if property_broken else "NO")
+            log.info("  ACTIVATED  : %s", "YES" if bug_line_hit else "NO")
             if property_broken:
                 log.info("  Waktu      : %.2fs", result.detection_time_sec)
 
     except subprocess.TimeoutExpired:
-        elapsed = time.time() - start_time
         result.status             = "TIMEOUT"
         result.detection_time_sec = ECHIDNA_TIMEOUT
         result.error_message      = f"Echidna timeout setelah {ECHIDNA_TIMEOUT}s"
         log.warning("  ⏱ TIMEOUT    | %s", fname)
-
-    except FileNotFoundError:
-        result.status        = "ERROR"
-        result.error_message = "Echidna tidak ditemukan."
-        log.error("  ✗ ERROR      | %s", result.error_message)
 
     except Exception as e:
         result.status        = "ERROR"
@@ -353,19 +312,11 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
 
     output_log_path = os.path.join(result_dir, f"{os.path.splitext(fname)[0]}_echidna.txt")
     with open(output_log_path, "w", encoding="utf-8") as f:
-        f.write("=== STDOUT ===\n")
-        f.write(result.echidna_stdout)
-        f.write("\n=== STDERR ===\n")
-        f.write(result.echidna_stderr)
+        f.write("=== STDOUT ===\n" + result.echidna_stdout + "\n=== STDERR ===\n" + result.echidna_stderr)
 
     return result
 
-
-def run_echidna_all(
-    injected_dir: str       = INJECTED_DIR,
-    results_dir: str        = ECHIDNA_RESULTS_DIR,
-    injection_log: list     = None,
-) -> List[EchidnaResult]:
+def run_echidna_all(injected_dir: str = INJECTED_DIR, results_dir: str = ECHIDNA_RESULTS_DIR, injection_log: list = None) -> List[EchidnaResult]:
     os.makedirs(results_dir, exist_ok=True)
 
     variant_lookup: Dict[str, str] = {}
@@ -373,13 +324,9 @@ def run_echidna_all(
         for entry in injection_log:
             output_file = entry.get("output_file", "")
             variant     = entry.get("variant", "unknown")
-            if output_file:
-                variant_lookup[output_file] = variant
+            if output_file: variant_lookup[output_file] = variant
 
-    sol_files = sorted([
-        f for f in os.listdir(injected_dir)
-        if f.endswith(".sol") and not f.startswith(".")
-    ])
+    sol_files = sorted([f for f in os.listdir(injected_dir) if f.endswith(".sol") and not f.startswith(".")])
 
     if not sol_files:
         log.warning("Tidak ada kontrak ter-inject di: %s", injected_dir)
@@ -394,25 +341,17 @@ def run_echidna_all(
 
     for fname in sol_files:
         contract_path = os.path.join(injected_dir, fname)
-
         variant = variant_lookup.get(fname, "unknown")
         if variant == "unknown":
-            if "single_function" in fname:
-                variant = "single_function"
-            elif "cross_function" in fname:
-                variant = "cross_function"
+            variant = "single_function" if "single_function" in fname else "cross_function"
 
         result_subdir = os.path.join(results_dir, os.path.splitext(fname)[0])
-        os.makedirs(result_subdir, exist_ok=True)
-
-        log.info("")
         log.info("Menguji: %s", fname)
-
+        
         echidna_result = run_echidna_on_contract(contract_path, result_subdir, variant)
         all_results.append(echidna_result)
 
     results_log_path = os.path.join(LOGS_DIR, "echidna_results.json")
-    os.makedirs(LOGS_DIR, exist_ok=True)
     with open(results_log_path, "w", encoding="utf-8") as f:
         json.dump([r.to_dict() for r in all_results], f, indent=2, ensure_ascii=False)
 
@@ -420,30 +359,24 @@ def run_echidna_all(
     neutralized = sum(1 for r in all_results if r.bug_line_hit and not r.property_broken)
     unreachable = sum(1 for r in all_results if not r.bug_line_hit and not r.property_broken and r.status not in ["TIMEOUT", "ERROR"])
     native_bug  = sum(1 for r in all_results if not r.bug_line_hit and r.property_broken)
-    
-    timeout = sum(1 for r in all_results if r.status == "TIMEOUT")
-    error   = sum(1 for r in all_results if r.status == "ERROR")
+    timeout     = sum(1 for r in all_results if r.status == "TIMEOUT")
+    error       = sum(1 for r in all_results if r.status == "ERROR")
 
-    log.info("")
-    log.info("Ringkasan Analisis Keamanan (Echidna):")
+    log.info("\nRingkasan Analisis Keamanan (Echidna):")
     log.info("  EXPLOITED     (Act: YES, Det: YES) : %d", exploited)
     log.info("  NEUTRALIZED   (Act: YES, Det: NO ) : %d", neutralized)
     log.info("  UNREACHABLE   (Act: NO , Det: NO ) : %d", unreachable)
     log.info("  NATIVE_BUG    (Act: NO , Det: YES) : %d", native_bug)
-    log.info("------------------------------------------------------------")
+    log.info("-" * 60)
     log.info("  TIMEOUT                            : %d", timeout)
     log.info("  ERROR                              : %d", error)
     log.info("Hasil tersimpan di: %s", results_log_path)
 
     return all_results
 
-
 if __name__ == "__main__":
     import sys
     if len(sys.argv) == 2:
-        result = run_echidna_on_contract(sys.argv[1], ECHIDNA_RESULTS_DIR, variant="unknown")
-        print(f"Status : {result.status}")
-        print(f"Detected: {result.property_broken}")
+        run_echidna_on_contract(sys.argv[1], ECHIDNA_RESULTS_DIR, variant="unknown")
     else:
-        results = run_echidna_all()
-        sys.exit(0 if results else 1)
+        run_echidna_all()
