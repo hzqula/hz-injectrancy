@@ -15,7 +15,6 @@ import os
 import json
 import csv
 from typing import List, Dict, Optional
-from collections import defaultdict
 from datetime import datetime
 
 from config import (
@@ -69,11 +68,20 @@ class MetricResult:
             return ECHIDNA_TIMEOUT
         return sum(self.detection_times) / len(self.detection_times)
 
+    @property
+    def total_neutralized(self) -> int:
+        """
+        Neutralized = Bug berhasil diaktivasi (Activated), tetapi gagal merusak properti (Not Detected).
+        Ini membuktikan intervensi perlindungan dari kompilator (misal: Revert Underflow).
+        """
+        return self.total_activated - self.total_detected
+
     def to_dict(self) -> dict:
         return {
             "variant":             self.variant,
             "total_injected":      self.total_injected,
             "total_detected":      self.total_detected,
+            "total_neutralized":   self.total_neutralized,
             "total_not_detected":  self.total_injected - self.total_detected - self.total_timeout - self.total_error,
             "total_activated":     self.total_activated,
             "total_timeout":       self.total_timeout,
@@ -177,19 +185,19 @@ def compute_metrics(echidna_results: list) -> Dict[str, MetricResult]:
 
 def print_metrics_table(metrics: Dict[str, MetricResult]) -> None:
     """Menampilkan tabel metrik ke console."""
-    separator = "=" * 80
+    separator = "=" * 95
     log.info("")
     log.info(separator)
     log.info("HASIL ANALISIS - RINGKASAN METRIK")
     log.info(separator)
 
-    # Header tabel
+    # Header tabel dengan kolom Neutralized
     header = (
         f"{'Varian':<20} | {'Total':<6} | {'Detected':<9} | "
-        f"{'DR%':<8} | {'Activated':<10} | {'AR%':<8} | {'Avg Time(s)':<12}"
+        f"{'Neutralized':<11} | {'DR%':<6} | {'Activated':<10} | {'AR%':<6} | {'Avg Time(s)':<12}"
     )
     log.info(header)
-    log.info("-" * 80)
+    log.info("-" * 95)
 
     for variant, mr in metrics.items():
         if mr.total_injected == 0:
@@ -201,7 +209,7 @@ def print_metrics_table(metrics: Dict[str, MetricResult]) -> None:
 
         row = (
             f"{mr.variant:<20} | {mr.total_injected:<6} | {mr.total_detected:<9} | "
-            f"{dr_pct:<7.1f}% | {mr.total_activated:<10} | {ar_pct:<7.1f}% | {avg_t:<12.2f}"
+            f"{mr.total_neutralized:<11} | {dr_pct:<5.1f}% | {mr.total_activated:<10} | {ar_pct:<5.1f}% | {avg_t:<12.2f}"
         )
         log.info(row)
 
@@ -214,7 +222,7 @@ def export_to_csv(
 ) -> None:
     """Mengekspor metrik ke file CSV."""
     fieldnames = [
-        "variant", "total_injected", "total_detected", "total_not_detected",
+        "variant", "total_injected", "total_detected", "total_neutralized", "total_not_detected",
         "total_activated", "total_timeout", "total_error",
         "detection_rate", "detection_rate_pct",
         "activation_rate", "activation_rate_pct",
@@ -357,6 +365,11 @@ def run_analysis(
             overall.total_injected,
         )
         log.info(
+            "  Neutralized Bug              : %d/%d",
+            overall.total_neutralized,
+            overall.total_injected,
+        )
+        log.info(
             "  Avg Deteksi (yang terdeteksi) : %.2f detik",
             overall.avg_detection_time,
         )
@@ -364,7 +377,7 @@ def run_analysis(
         if overall.not_detected_files:
             log.info("")
             log.info(
-                "  Bug TIDAK TERDETEKSI (%d kontrak):",
+                "  Bug TIDAK TERDETEKSI (%d kontrak) [Didominasi Neutralized]:",
                 len(overall.not_detected_files),
             )
             for f in overall.not_detected_files[:10]:  # tampilkan max 10
