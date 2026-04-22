@@ -6,3 +6,4 @@ analysis_results/
 logs/
 __pycache__/
 .env
+env
