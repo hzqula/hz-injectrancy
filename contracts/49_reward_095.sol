@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// src -> hhttps://github.com/imranpollob/smart-contract-vulnerability-dataset/blob/master/smart_contract_dataset/reward_distribution/vulnerable/low/reward_095.sol
+// src -> https://github.com/imranpollob/smart-contract-vulnerability-dataset/blob/master/smart_contract_dataset/reward_distribution/vulnerable/low/reward_095.sol
 pragma solidity ^0.8.0;
 
 /**
