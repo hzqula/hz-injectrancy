@@ -131,25 +131,45 @@ def _create_echidna_wrapper(contract_path: str, result_dir: str, contract_name: 
     if constructor_match and constructor_match.group(1).strip():
         params_list = [p.strip() for p in constructor_match.group(1).strip().split(",") if p.strip()]
         dummy_args = []
+        
         for param in params_list:
             parts = param.split()
-            p_type = parts[0].lower()
+            p_type_raw = parts[0].strip()
+            p_type = p_type_raw.lower()
             p_name = parts[-1].lower() if len(parts) > 1 else ""
             
-            if "uint" in p_type or "int" in p_type:
-                if "time" in p_name or "deadline" in p_name or "duration" in p_name or "end" in p_name:
+            # 1. Tangani Array Terlebih Dahulu
+            if "[]" in p_type:
+                base_type = p_type_raw.split("[")[0]
+                dummy_args.append(f"new {base_type}[](0)")
+                
+            # 2. Tangani Tipe Data Dasar
+            elif "uint" in p_type or "int" in p_type:
+                if any(kw in p_name for kw in ["time", "deadline", "duration", "end"]):
                     dummy_args.append("9999999999") 
                 else:
-                    dummy_args.append("1000")        
+                    dummy_args.append("1000")
             elif "address" in p_type:
-                if "price" in p_name or "feed" in p_name or "oracle" in p_name or "aggregator" in p_name:
+                if "payable" in param.lower():
+                    dummy_args.append("payable(address(0x10000))")
+                elif any(kw in p_name for kw in ["price", "feed", "oracle", "aggregator"]):
                     dummy_args.append("address(0x694AA1769357215DE4FAC081bf1f309aDC325306)")
                 else:
-                    dummy_args.append("address(0x10000)") 
-            elif "bool" in p_type: dummy_args.append("true")        
-            elif "string" in p_type: dummy_args.append('"Test"')      
-            elif "bytes" in p_type: dummy_args.append('""')          
-            else: dummy_args.append("0")           
+                    dummy_args.append("address(0x10000)")
+            # [PENTING] bytes32 harus dicek SEBELUM bytes!
+            elif "bytes32" in p_type:
+                dummy_args.append("bytes32(0)")
+            elif "bytes" in p_type:
+                dummy_args.append('""')
+            elif "bool" in p_type:
+                dummy_args.append("true")
+            elif "string" in p_type:
+                dummy_args.append('"Test"')
+                
+            # 3. Fallback untuk Interface/Custom Contract (misal: IERC20)
+            else:
+                dummy_args.append(f"{p_type_raw}(address(0))")
+
         args_string = ", ".join(dummy_args)
 
     # Pilih fungsi serangan sesuai varian kontrak
