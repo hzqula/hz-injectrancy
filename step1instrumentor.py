@@ -1,15 +1,15 @@
 """
-STEP 1 — INSTRUMENTASI ORACLE
-===============================
-Menyisipkan mekanisme oracle ke dalam kontrak bersih (base contract).
-Oracle adalah fungsi Echidna yang mendeteksi pelanggaran invariant saat runtime.
+STEP 1 — ORACLE INSTRUMENTATION
+=================================
+Inserts an oracle mechanism into clean base contracts.
+The oracle is an Echidna property function that detects invariant violations at runtime.
 
-Alur:
-    base_contract  →  [instrumentasi]  →  instrumented_contract
+Flow:
+    base_contract  →  [instrumentation]  →  instrumented_contract
 
-Yang disisipkan:
-    1. State reentrancy : hz_is_reentered (publik) dan hz_locked (privat)
-    2. Fungsi oracle    : mengembalikan !hz_is_reentered
+What is inserted:
+    1. Reentrancy state variables : isReenteredHZ (public) and lockedHZ (private)
+    2. Oracle function            : returns !isReenteredHZ
 """
 
 import os
@@ -23,29 +23,29 @@ log = get_logger("instrumentor")
 
 
 # ---------------------------------------------------------------------------
-# Template kode yang disisipkan
+# Code templates
 # ---------------------------------------------------------------------------
 
 TRACKER_VAR_TEMPLATE = """
-    // [ORACLE] Variabel pelacak reentrancy
-    bool public  hz_is_reentered = false;
-    bool private hz_locked       = false;
+    // [ORACLE] Reentrancy tracker variables
+    bool public  isReenteredHZ = false;
+    bool private lockedHZ      = false;
 """
 
 ORACLE_FUNCTION_TEMPLATE = """
-    // [ORACLE] Property Echidna — pelanggaran berarti fuzzer berhasil re-enter
+    // [ORACLE] Echidna property — a violation means the fuzzer successfully re-entered
     function {oracle_name}() public view returns (bool) {{
-        return !hz_is_reentered;
+        return !isReenteredHZ;
     }}
 """
 
 
 # ---------------------------------------------------------------------------
-# Utilitas internal
+# Internal utilities
 # ---------------------------------------------------------------------------
 
 def _detect_contract_name(source: str) -> Optional[str]:
-    """Mendeteksi nama kontrak pertama (bukan interface/library)."""
+    """Detect the name of the first contract definition (not interface or library)."""
     for line in source.splitlines():
         stripped = line.strip()
         if stripped.startswith("contract ") and "{" in stripped:
@@ -56,41 +56,41 @@ def _detect_contract_name(source: str) -> Optional[str]:
 
 
 def _insert_after_contract_open(source: str, contract_name: str, code: str) -> str:
-    """Menyisipkan *code* tepat setelah baris pembuka blok kontrak."""
+    """Insert *code* immediately after the opening brace of the target contract."""
     lines = source.splitlines()
     insert_idx: Optional[int] = None
 
-    # Cari baris pembuka kontrak yang cocok dengan nama
+    # Find the opening line of the named contract
     for i, line in enumerate(lines):
         s = line.strip()
         if s.startswith("contract ") and contract_name in s and "{" in s:
             insert_idx = i + 1
             break
 
-    # Fallback: ambil kontrak pertama yang ditemukan
+    # Fallback: use the first contract found
     if insert_idx is None:
-        log.warning("Kontrak '%s' tidak ditemukan, gunakan kontrak pertama.", contract_name)
+        log.warning("Contract '%s' not found — using the first contract instead.", contract_name)
         for i, line in enumerate(lines):
             if line.strip().startswith("contract ") and "{" in line:
                 insert_idx = i + 1
                 break
 
     if insert_idx is None:
-        log.error("Tidak dapat menemukan lokasi sisipan variabel pelacak.")
+        log.error("Could not locate insertion point for tracker variables.")
         return source
 
     lines.insert(insert_idx, code)
-    log.debug("Kode disisipkan setelah baris %d.", insert_idx)
+    log.debug("Code inserted after line %d.", insert_idx)
     return "\n".join(lines)
 
 
 def _insert_before_contract_close(source: str, contract_name: str, code: str) -> str:
-    """Menyisipkan *code* tepat sebelum kurung kurawal penutup kontrak."""
+    """Insert *code* immediately before the closing brace of the target contract."""
     pattern = r"contract\s+" + re.escape(contract_name) + r"\s*\{"
     match = re.search(pattern, source)
 
     if not match:
-        # Fallback: sisipkan sebelum kurung kurawal terakhir
+        # Fallback: insert before the last closing brace in the file
         last = source.rfind("}")
         return source[:last] + "\n" + code + "\n" + source[last:]
 
@@ -109,23 +109,23 @@ def _insert_before_contract_close(source: str, contract_name: str, code: str) ->
 
 
 # ---------------------------------------------------------------------------
-# Fungsi publik
+# Public API
 # ---------------------------------------------------------------------------
 
 def instrument_contract(input_path: str, output_path: str) -> bool:
     """
-    Menginstrumentasi satu file kontrak Solidity.
+    Instrument a single Solidity contract file.
 
-    Menyisipkan variabel pelacak dan fungsi oracle ke dalam kontrak,
-    lalu menyimpan hasilnya ke *output_path*.
+    Inserts tracker variables and the oracle function into the contract,
+    then writes the result to *output_path*.
 
     Returns:
-        True jika berhasil, False jika terjadi kesalahan.
+        True on success, False on any error.
     """
-    log.info("Menginstumentasi: %s", os.path.basename(input_path))
+    log.info("Instrumenting: %s", os.path.basename(input_path))
 
     if not os.path.isfile(input_path):
-        log.error("File tidak ditemukan: %s", input_path)
+        log.error("File not found: %s", input_path)
         return False
 
     with open(input_path, encoding="utf-8", errors="ignore") as f:
@@ -133,10 +133,10 @@ def instrument_contract(input_path: str, output_path: str) -> bool:
 
     contract_name = _detect_contract_name(source)
     if contract_name is None:
-        log.error("Tidak dapat mendeteksi nama kontrak: %s", input_path)
+        log.error("Could not detect contract name in: %s", input_path)
         return False
 
-    log.debug("Kontrak terdeteksi: %s", contract_name)
+    log.debug("Contract detected: %s", contract_name)
 
     source = _insert_after_contract_open(source, contract_name, TRACKER_VAR_TEMPLATE)
     source = _insert_before_contract_close(
@@ -158,10 +158,10 @@ def run_instrumentation(
     output_dir: str = INSTRUMENTED_DIR,
 ) -> dict:
     """
-    Menginstrumentasi semua file .sol di *base_dir* dan menyimpannya ke *output_dir*.
+    Instrument all .sol files in *base_dir* and write the results to *output_dir*.
 
     Returns:
-        Dict { "filename.sol": True/False } hasil instrumentasi per file.
+        Dict mapping { "filename.sol": True/False } for each processed file.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -171,13 +171,13 @@ def run_instrumentation(
     )
 
     if not sol_files:
-        log.warning("Tidak ada file .sol di: %s", base_dir)
+        log.warning("No .sol files found in: %s", base_dir)
         return {}
 
     log.info("=" * 60)
-    log.info("STEP 1: INSTRUMENTASI ORACLE")
+    log.info("STEP 1: ORACLE INSTRUMENTATION")
     log.info("=" * 60)
-    log.info("Total kontrak: %d", len(sol_files))
+    log.info("Contracts to instrument: %d", len(sol_files))
 
     results = {}
     for fname in sol_files:
@@ -188,7 +188,7 @@ def run_instrumentation(
         results[fname] = ok
 
     success = sum(results.values())
-    log.info("Selesai: %d/%d berhasil.", success, len(sol_files))
+    log.info("Done: %d/%d succeeded.", success, len(sol_files))
     return results
 
 
@@ -205,6 +205,6 @@ if __name__ == "__main__":
         results = run_instrumentation()
         failed = [k for k, v in results.items() if not v]
         if failed:
-            log.warning("Gagal: %s", failed)
+            log.warning("Failed: %s", failed)
             sys.exit(1)
         sys.exit(0)

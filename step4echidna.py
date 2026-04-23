@@ -1,32 +1,32 @@
 """
-STEP 4 — PENGUJIAN DENGAN ECHIDNA
-====================================
-Menjalankan Echidna property-based fuzzer pada setiap kontrak yang
-telah disuntikkan bug reentrancy.
+STEP 4 — ECHIDNA FUZZING
+==========================
+Runs the Echidna property-based fuzzer on every contract
+that has been injected with a reentrancy bug.
 
-Untuk setiap kontrak, pipeline:
-    1. Membuat wrapper attacker + proxy Echidna secara otomatis
-    2. Menghasilkan konfigurasi YAML Echidna
-    3. Menjalankan Echidna dan mem-parsing hasilnya
-    4. Menyimpan log teks dan JSON hasil akhir
+For each contract the pipeline:
+    1. Auto-generates an attacker wrapper + Echidna proxy contract
+    2. Produces an Echidna YAML configuration file
+    3. Runs Echidna and parses the output
+    4. Saves the raw text log and a final JSON results file
 """
 
+import json
 import os
 import re
-import json
 import subprocess
 import time
 import yaml
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from config import (
-    INJECTED_DIR,
-    ECHIDNA_RESULTS_DIR,
     ECHIDNA_CONFIG,
+    ECHIDNA_RESULTS_DIR,
+    ECHIDNA_TIMEOUT,
+    INJECTED_DIR,
     LOGS_DIR,
     ORACLE_FUNCTION_NAME,
-    ECHIDNA_TIMEOUT,
     RPC_URL,
 )
 from logger import get_logger
@@ -35,35 +35,39 @@ log = get_logger("echidna_runner")
 
 
 # ---------------------------------------------------------------------------
-# Data class hasil Echidna
+# Result dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass
 class EchidnaResult:
-    source_file:        str   = ""
-    contract_name:      str   = ""
-    variant:            str   = ""
-    status:             str   = "UNKNOWN"
-    property_broken:    bool  = False
-    detection_time_sec: float = -1.0
+    source_file:        str       = ""
+    contract_name:      str       = ""
+    variant:            str       = ""
+    status:             str       = "UNKNOWN"
+    property_broken:    bool      = False
+    detection_time_sec: float     = -1.0
     lines_covered:      List[int] = field(default_factory=list)
-    bug_line_hit:       bool  = False
-    echidna_stdout:     str   = ""
-    echidna_stderr:     str   = ""
-    error_message:      str   = ""
+    bug_line_hit:       bool      = False
+    echidna_stdout:     str       = ""
+    echidna_stderr:     str       = ""
+    error_message:      str       = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 # ---------------------------------------------------------------------------
-# Konfigurasi YAML Echidna
+# Echidna YAML configuration
 # ---------------------------------------------------------------------------
 
-def _generate_echidna_config(output_dir: str, contract_path: str, wrapper_path: Optional[str]) -> str:
+def _generate_echidna_config(
+    output_dir: str,
+    contract_path: str,
+    wrapper_path: Optional[str],
+) -> str:
     """
-    Membuat file echidna_config.yaml di *output_dir*.
-    Menambahkan rpcUrl jika kontrak menggunakan Chainlink atau oracle eksternal.
+    Write an echidna_config.yaml file to *output_dir*.
+    Adds rpcUrl when the contract references Chainlink or an external oracle.
     """
     config = {
         "testLimit":       ECHIDNA_CONFIG["testLimit"],
@@ -82,7 +86,7 @@ def _generate_echidna_config(output_dir: str, contract_path: str, wrapper_path: 
     if "maxTimeDelay" in ECHIDNA_CONFIG:
         config["maxTimeDelay"] = ECHIDNA_CONFIG["maxTimeDelay"]
 
-    # Tambahkan RPC URL jika ada referensi ke Chainlink / oracle eksternal
+    # Add RPC URL when the contract uses Chainlink / external price feeds
     chainlink_markers = [
         "0x694AA1769357215DE4FAC081bf1f309aDC325306",
         "Chainlink",
@@ -105,15 +109,15 @@ def _generate_echidna_config(output_dir: str, contract_path: str, wrapper_path: 
 
 
 # ---------------------------------------------------------------------------
-# Parsing output Echidna
+# Output parsing
 # ---------------------------------------------------------------------------
 
 def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
     """
-    Mem-parsing output Echidna untuk menentukan:
-        - property_broken : apakah oracle property dilanggar
-        - detection_time  : waktu deteksi (detik), -1 jika tidak terdeteksi
-        - bug_line_hit    : apakah baris bug berhasil dieksekusi
+    Parse Echidna's combined output to determine:
+        - property_broken : whether the oracle property was violated
+        - detection_time  : time of detection in seconds (-1 if not detected)
+        - bug_line_hit    : whether the injected bug line was executed
     """
     combined = stdout + "\n" + stderr
 
@@ -133,11 +137,11 @@ def _parse_echidna_output(stdout: str, stderr: str) -> Tuple[bool, float, bool]:
 
 
 # ---------------------------------------------------------------------------
-# Deteksi nama kontrak
+# Contract name detection
 # ---------------------------------------------------------------------------
 
 def _detect_contract_name(filepath: str) -> Optional[str]:
-    """Membaca file dan mengembalikan nama kontrak pertama yang ditemukan."""
+    """Read a file and return the name of the first contract definition found."""
     try:
         with open(filepath, encoding="utf-8", errors="ignore") as f:
             for line in f.read().splitlines():
@@ -152,13 +156,13 @@ def _detect_contract_name(filepath: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Pembuatan wrapper Echidna
+# Echidna wrapper generation
 # ---------------------------------------------------------------------------
 
 def _build_constructor_args(source: str) -> str:
     """
-    Mem-parsing parameter konstruktor dan menghasilkan argumen dummy
-    yang sesuai dengan tipe data masing-masing parameter.
+    Parse the constructor parameters and produce type-appropriate dummy arguments
+    suitable for use inside the generated Solidity wrapper.
     """
     match = re.search(r"constructor\s*\((.*?)\)", source, re.DOTALL)
     if not match or not match.group(1).strip():
@@ -168,15 +172,19 @@ def _build_constructor_args(source: str) -> str:
     dummy_args = []
 
     for param in params:
-        parts     = param.split()
-        type_raw  = parts[0].strip()
+        parts      = param.split()
+        type_raw   = parts[0].strip()
         type_lower = type_raw.lower()
         name_lower = parts[-1].lower() if len(parts) > 1 else ""
 
         if "[]" in type_lower:
             dummy_args.append(f"new {type_raw.split('[')[0]}[](0)")
         elif "uint" in type_lower or "int" in type_lower:
-            value = "9999999999" if any(kw in name_lower for kw in ["time", "deadline", "duration", "end"]) else "1000"
+            value = (
+                "9999999999"
+                if any(kw in name_lower for kw in ["time", "deadline", "duration", "end"])
+                else "1000"
+            )
             dummy_args.append(value)
         elif "address" in type_lower:
             if "payable" in param.lower():
@@ -206,18 +214,22 @@ def _create_echidna_wrapper(
     variant: str,
 ) -> Optional[str]:
     """
-    Membuat file wrapper Solidity yang berisi:
-        - EchidnaAttacker_{name} : kontrak penyerang dengan fallback reentrancy
-        - {name}Echidna          : kontrak wrapper yang diuji langsung oleh Echidna
+    Generate a Solidity wrapper file containing:
+        - EchidnaAttacker_{name} : attacker contract with a reentrancy receive() fallback
+        - {name}Echidna          : wrapper contract tested directly by Echidna
 
     Returns:
-        Path ke file wrapper, atau None jika gagal.
+        Path to the wrapper file, or None on failure.
     """
     with open(contract_path, encoding="utf-8") as f:
         source = f.read()
 
-    args_string   = _build_constructor_args(source)
-    target_func   = "bug_reentrancy_single" if variant == "single_function" else "bug_reentrancy_cross_withdraw"
+    args_string  = _build_constructor_args(source)
+    target_func  = (
+        "bug_reentrancy_single"
+        if variant == "single_function"
+        else "bug_reentrancy_cross_withdraw"
+    )
     wrapper_name  = f"{contract_name}Echidna"
     wrapper_fname = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
     wrapper_path  = os.path.join(result_dir, wrapper_fname)
@@ -226,7 +238,7 @@ def _create_echidna_wrapper(
 pragma solidity ^0.8.0;
 import "../../injected_contracts/{os.path.basename(contract_path)}";
 
-// Kontrak penyerang — memicu reentrancy melalui fallback receive()
+// Attacker contract — triggers reentrancy via the receive() fallback
 contract EchidnaAttacker_{contract_name} {{
     {contract_name} public target;
     bool private isAttacking;
@@ -239,7 +251,7 @@ contract EchidnaAttacker_{contract_name} {{
         target.{target_func}(amount);
     }}
 
-    // Fallback: dipanggil saat menerima Ether → balik ke target (reentrancy)
+    // Called when receiving Ether → re-enters the target (reentrancy)
     receive() external payable {{
         if (!isAttacking) {{
             isAttacking = true;
@@ -249,18 +261,18 @@ contract EchidnaAttacker_{contract_name} {{
     }}
 }}
 
-// Wrapper yang diuji langsung oleh Echidna
+// Wrapper contract tested directly by Echidna
 contract {wrapper_name} is {contract_name} {{
     EchidnaAttacker_{contract_name} public attacker;
 
-    // payable agar Echidna dapat memberikan modal ETH saat deploy
+    // payable so Echidna can fund the contract with ETH on deployment
     constructor() payable {contract_name}({args_string}) {{
         attacker = new EchidnaAttacker_{contract_name}(this);
     }}
 
-    // Tombol fuzzer — dipanggil Echidna untuk memulai serangan
+    // Fuzzer entry point — called by Echidna to trigger an attack
     function fuzz_attack(uint256 amount) public {{
-        amount = (amount % 10 ether) + 1;  // Batasi maksimum 10 ether
+        amount = (amount % 10 ether) + 1;  // Cap at 10 ether
         attacker.attack(amount);
     }}
 }}
@@ -272,13 +284,13 @@ contract {wrapper_name} is {contract_name} {{
 
 
 # ---------------------------------------------------------------------------
-# Pemeriksaan coverage corpus
+# Corpus coverage check
 # ---------------------------------------------------------------------------
 
 def _check_corpus_coverage(result_dir: str) -> bool:
     """
-    Memeriksa direktori corpus Echidna untuk mendeteksi apakah
-    baris external call pada fungsi bug berhasil dieksekusi.
+    Scan Echidna's corpus directory to determine whether the external call
+    inside the injected bug function was ever executed.
     """
     corpus_dir = os.path.join(result_dir, "corpus")
     if not os.path.exists(corpus_dir):
@@ -305,20 +317,24 @@ def _check_corpus_coverage(result_dir: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Fungsi utama pengujian satu kontrak
+# Single-contract fuzzing
 # ---------------------------------------------------------------------------
 
-def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -> EchidnaResult:
+def run_echidna_on_contract(
+    contract_path: str,
+    result_dir: str,
+    variant: str,
+) -> EchidnaResult:
     """
-    Menjalankan Echidna pada satu file kontrak ter-inject.
+    Run Echidna on a single injected contract.
 
     Args:
-        contract_path : Path ke file .sol ter-inject.
-        result_dir    : Direktori output untuk log dan corpus.
-        variant       : Varian bug ("single_function" atau "cross_function").
+        contract_path : Path to the injected .sol file.
+        result_dir    : Output directory for logs and corpus.
+        variant       : Bug variant ("single_function" or "cross_function").
 
     Returns:
-        EchidnaResult berisi status dan metrik deteksi.
+        EchidnaResult containing the detection status and metrics.
     """
     fname         = os.path.basename(contract_path)
     contract_name = _detect_contract_name(contract_path)
@@ -331,18 +347,18 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
 
     if not os.path.isfile(contract_path):
         result.status        = "ERROR"
-        result.error_message = f"File tidak ditemukan: {contract_path}"
+        result.error_message = f"File not found: {contract_path}"
         log.error(result.error_message)
         return result
 
     os.makedirs(result_dir, exist_ok=True)
 
-    wrapper_path  = _create_echidna_wrapper(contract_path, result_dir, contract_name, variant)
-    config_path   = _generate_echidna_config(result_dir, contract_path, wrapper_path)
+    wrapper_path = _create_echidna_wrapper(contract_path, result_dir, contract_name, variant)
+    config_path  = _generate_echidna_config(result_dir, contract_path, wrapper_path)
 
-    # Gunakan wrapper sebagai target Echidna
-    target_path  = wrapper_path or contract_path
-    target_name  = f"{contract_name}Echidna" if wrapper_path else contract_name
+    # Use the wrapper as Echidna's target
+    target_path = wrapper_path or contract_path
+    target_name = f"{contract_name}Echidna" if wrapper_path else contract_name
 
     if wrapper_path:
         log.info("  [wrapper] %s", os.path.basename(wrapper_path))
@@ -351,7 +367,7 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
     if target_name:
         cmd += ["--contract", target_name]
 
-    log.info("  Menjalankan Echidna: %s [%s]", fname, variant)
+    log.info("  Running Echidna: %s [%s]", fname, variant)
 
     start = time.time()
     try:
@@ -367,17 +383,17 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
             proc.stdout, proc.stderr
         )
 
-        # Cek coverage corpus sebagai fallback jika parsing output tidak cukup
+        # Fall back to corpus coverage check if output parsing is inconclusive
         if not bug_line_hit:
             bug_line_hit = _check_corpus_coverage(result_dir)
 
-        result.property_broken  = property_broken
-        result.bug_line_hit     = bug_line_hit
+        result.property_broken = property_broken
+        result.bug_line_hit    = bug_line_hit
 
         if proc.returncode != 0 and not property_broken:
             result.status        = "ERROR"
             last_err             = proc.stderr.strip().splitlines()[-1] if proc.stderr else "Unknown"
-            result.error_message = f"Echidna crash: {last_err}"
+            result.error_message = f"Echidna crashed: {last_err}"
             log.error("  ✗ ERROR: %s", result.error_message)
         else:
             if property_broken:
@@ -398,12 +414,12 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
     except subprocess.TimeoutExpired:
         result.status             = "TIMEOUT"
         result.detection_time_sec = ECHIDNA_TIMEOUT
-        result.error_message      = f"Timeout setelah {ECHIDNA_TIMEOUT}s"
+        result.error_message      = f"Timed out after {ECHIDNA_TIMEOUT}s"
         log.warning("  ⏱ TIMEOUT: %s", fname)
 
     except FileNotFoundError:
         result.status        = "ERROR"
-        result.error_message = "Echidna tidak ditemukan. Pastikan Echidna terinstall."
+        result.error_message = "Echidna not found. Make sure Echidna is installed."
         log.error("  ✗ ERROR: %s", result.error_message)
 
     except Exception as e:
@@ -411,7 +427,7 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
         result.error_message = str(e)
         log.error("  ✗ ERROR: %s", e)
 
-    # Simpan log teks mentah
+    # Save raw text log
     log_txt = os.path.join(result_dir, f"{os.path.splitext(fname)[0]}_echidna.txt")
     with open(log_txt, "w", encoding="utf-8") as f:
         f.write("=== STDOUT ===\n")
@@ -423,7 +439,7 @@ def run_echidna_on_contract(contract_path: str, result_dir: str, variant: str) -
 
 
 # ---------------------------------------------------------------------------
-# Fungsi batch pengujian semua kontrak
+# Batch fuzzing
 # ---------------------------------------------------------------------------
 
 def run_echidna_all(
@@ -432,19 +448,19 @@ def run_echidna_all(
     injection_log: list = None,
 ) -> List[EchidnaResult]:
     """
-    Menjalankan Echidna pada semua kontrak ter-inject di *injected_dir*.
+    Run Echidna on all injected contracts in *injected_dir*.
 
     Args:
-        injected_dir  : Direktori kontrak ter-inject.
-        results_dir   : Direktori output hasil Echidna.
-        injection_log : Metadata injeksi untuk pemetaan varian per file.
+        injected_dir  : Directory containing injected contracts.
+        results_dir   : Output directory for Echidna results.
+        injection_log : Injection metadata used to map variants to filenames.
 
     Returns:
-        List EchidnaResult untuk setiap kontrak yang diuji.
+        List of EchidnaResult for every tested contract.
     """
     os.makedirs(results_dir, exist_ok=True)
 
-    # Bangun lookup variant dari injection log
+    # Build a filename → variant lookup from the injection log
     variant_lookup: Dict[str, str] = {}
     if injection_log:
         for entry in injection_log:
@@ -458,18 +474,18 @@ def run_echidna_all(
     )
 
     if not sol_files:
-        log.warning("Tidak ada kontrak ter-inject di: %s", injected_dir)
+        log.warning("No injected contracts found in: %s", injected_dir)
         return []
 
     log.info("=" * 60)
-    log.info("STEP 4: PENGUJIAN DENGAN ECHIDNA")
+    log.info("STEP 4: ECHIDNA FUZZING")
     log.info("=" * 60)
-    log.info("Total kontrak: %d", len(sol_files))
+    log.info("Contracts to test: %d", len(sol_files))
 
     all_results: List[EchidnaResult] = []
 
     for fname in sol_files:
-        # Tentukan varian dari lookup atau nama file
+        # Resolve variant from lookup, or fall back to filename heuristic
         variant = variant_lookup.get(fname, "unknown")
         if variant == "unknown":
             if "single_function" in fname:
@@ -481,30 +497,33 @@ def run_echidna_all(
         os.makedirs(result_subdir, exist_ok=True)
 
         log.info("")
-        log.info("Menguji: %s", fname)
+        log.info("Testing: %s", fname)
 
         r = run_echidna_on_contract(
             os.path.join(injected_dir, fname), result_subdir, variant
         )
         all_results.append(r)
 
-    # Simpan semua hasil ke JSON
+    # Persist all results to JSON
     results_log_path = os.path.join(LOGS_DIR, "echidna_results.json")
     os.makedirs(LOGS_DIR, exist_ok=True)
     with open(results_log_path, "w", encoding="utf-8") as f:
         json.dump([r.to_dict() for r in all_results], f, indent=2, ensure_ascii=False)
 
-    # Ringkasan
+    # Summary
     exploited   = sum(1 for r in all_results if r.bug_line_hit and r.property_broken)
     neutralized = sum(1 for r in all_results if r.bug_line_hit and not r.property_broken)
-    unreachable = sum(1 for r in all_results if not r.bug_line_hit and not r.property_broken
-                      and r.status not in ("TIMEOUT", "ERROR"))
-    native_bug  = sum(1 for r in all_results if not r.bug_line_hit and r.property_broken)
-    timeout     = sum(1 for r in all_results if r.status == "TIMEOUT")
-    error       = sum(1 for r in all_results if r.status == "ERROR")
+    unreachable = sum(
+        1 for r in all_results
+        if not r.bug_line_hit and not r.property_broken
+        and r.status not in ("TIMEOUT", "ERROR")
+    )
+    native_bug = sum(1 for r in all_results if not r.bug_line_hit and r.property_broken)
+    timeout    = sum(1 for r in all_results if r.status == "TIMEOUT")
+    error      = sum(1 for r in all_results if r.status == "ERROR")
 
     log.info("")
-    log.info("Ringkasan Analisis Keamanan:")
+    log.info("Security Analysis Summary:")
     log.info("  EXPLOITED   (Act: YES, Det: YES) : %d", exploited)
     log.info("  NEUTRALIZED (Act: YES, Det: NO ) : %d", neutralized)
     log.info("  UNREACHABLE (Act: NO , Det: NO ) : %d", unreachable)
@@ -512,7 +531,7 @@ def run_echidna_all(
     log.info("  " + "-" * 40)
     log.info("  TIMEOUT                          : %d", timeout)
     log.info("  ERROR                            : %d", error)
-    log.info("Hasil tersimpan di: %s", results_log_path)
+    log.info("Results saved to: %s", results_log_path)
 
     return all_results
 

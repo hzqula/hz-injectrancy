@@ -1,43 +1,43 @@
 """
-STEP 2 — VERIFIKASI KOMPILASI
-================================
-Memastikan semua kontrak yang sudah diinstrumentasi dapat dikompilasi
-tanpa error sebelum dilanjutkan ke tahap injeksi bug.
+STEP 2 — COMPILATION VERIFICATION
+====================================
+Ensures all instrumented contracts compile without errors
+before proceeding to the bug injection stage.
 
-Kontrak yang gagal dikompilasi tidak diteruskan ke tahap berikutnya
-dan dicatat sebagai error dalam log.
+Contracts that fail to compile are excluded from subsequent steps
+and recorded as errors in the log.
 
-Alur:
-    instrumented_contract  →  [verifikasi solc]  →  valid / invalid
+Flow:
+    instrumented_contract  →  [solc verification]  →  valid / invalid
 """
 
 import os
 import subprocess
 from typing import Dict, Tuple
 
-from config import INSTRUMENTED_DIR, SOLC_BINARY, COMPILATION_TIMEOUT
+from config import COMPILATION_TIMEOUT, INSTRUMENTED_DIR, SOLC_BINARY
 from logger import get_logger
 
 log = get_logger("compiler")
 
 
 # ---------------------------------------------------------------------------
-# Fungsi inti
+# Core function
 # ---------------------------------------------------------------------------
 
 def compile_contract(filepath: str) -> Tuple[bool, str]:
     """
-    Mencoba mengkompilasi satu file kontrak Solidity menggunakan solc.
+    Attempt to compile a single Solidity contract using solc.
 
     Args:
-        filepath: Path lengkap ke file .sol.
+        filepath: Absolute path to the .sol file.
 
     Returns:
-        (True, "")           jika kompilasi berhasil.
-        (False, pesan_error) jika terjadi kesalahan.
+        (True, "")            if compilation succeeds.
+        (False, error_message) if an error occurs.
     """
     if not os.path.isfile(filepath):
-        return False, f"File tidak ditemukan: {filepath}"
+        return False, f"File not found: {filepath}"
 
     try:
         result = subprocess.run(
@@ -47,11 +47,11 @@ def compile_contract(filepath: str) -> Tuple[bool, str]:
             timeout=COMPILATION_TIMEOUT,
         )
     except FileNotFoundError:
-        return False, f"Compiler '{SOLC_BINARY}' tidak ditemukan. Pastikan solc terinstall."
+        return False, f"Compiler '{SOLC_BINARY}' not found. Make sure solc is installed."
     except subprocess.TimeoutExpired:
         return False, f"Timeout ({COMPILATION_TIMEOUT}s): {os.path.basename(filepath)}"
     except Exception as e:
-        return False, f"Error tidak terduga: {e}"
+        return False, f"Unexpected error: {e}"
 
     if result.returncode != 0:
         combined = result.stdout + result.stderr
@@ -69,10 +69,10 @@ def verify_instrumented_contracts(
     instrumented_dir: str = INSTRUMENTED_DIR,
 ) -> Dict[str, Tuple[bool, str]]:
     """
-    Memverifikasi semua kontrak terinstrumentasi di dalam *instrumented_dir*.
+    Verify all instrumented contracts found in *instrumented_dir*.
 
     Returns:
-        Dict { "filename.sol": (berhasil, pesan_error) }
+        Dict mapping { "filename.sol": (success, error_message) }.
     """
     sol_files = sorted(
         f for f in os.listdir(instrumented_dir)
@@ -80,13 +80,13 @@ def verify_instrumented_contracts(
     )
 
     if not sol_files:
-        log.warning("Tidak ada file .sol di: %s", instrumented_dir)
+        log.warning("No .sol files found in: %s", instrumented_dir)
         return {}
 
     log.info("=" * 60)
-    log.info("STEP 2: VERIFIKASI KOMPILASI")
+    log.info("STEP 2: COMPILATION VERIFICATION")
     log.info("=" * 60)
-    log.info("Total kontrak: %d", len(sol_files))
+    log.info("Contracts to verify: %d", len(sol_files))
 
     results: Dict[str, Tuple[bool, str]] = {}
     valid_count = invalid_count = 0
@@ -106,21 +106,21 @@ def verify_instrumented_contracts(
                 if line.strip():
                     log.warning("            %s", line.strip())
 
-    log.info("Hasil: %d valid, %d invalid.", valid_count, invalid_count)
+    log.info("Result: %d valid, %d invalid.", valid_count, invalid_count)
     return results
 
 
 # ---------------------------------------------------------------------------
-# Fungsi pembantu
+# Helper functions
 # ---------------------------------------------------------------------------
 
 def get_valid_contracts(results: Dict[str, Tuple[bool, str]]) -> list:
-    """Mengembalikan daftar nama file yang lulus verifikasi."""
+    """Return a list of filenames that passed verification."""
     return [fname for fname, (ok, _) in results.items() if ok]
 
 
 def get_invalid_contracts(results: Dict[str, Tuple[bool, str]]) -> list:
-    """Mengembalikan daftar nama file yang gagal verifikasi."""
+    """Return a list of filenames that failed verification."""
     return [fname for fname, (ok, _) in results.items() if not ok]
 
 
@@ -133,15 +133,15 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         ok, msg = compile_contract(sys.argv[1])
         if ok:
-            print(f"✓ Kompilasi berhasil: {sys.argv[1]}")
+            print(f"✓ Compilation succeeded: {sys.argv[1]}")
         else:
-            print(f"✗ Kompilasi gagal:\n{msg}")
+            print(f"✗ Compilation failed:\n{msg}")
             sys.exit(1)
     else:
         results = verify_instrumented_contracts()
         invalid = get_invalid_contracts(results)
         if invalid:
-            log.warning("Kontrak yang gagal dikompilasi:")
+            log.warning("Contracts that failed to compile:")
             for f in invalid:
                 _, err = results[f]
                 log.warning("  - %s: %s", f, err[:100])

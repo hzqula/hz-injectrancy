@@ -1,13 +1,13 @@
 """
-Konfigurasi utama untuk Dynamic Reentrancy Bug Injection Tool.
-Diadaptasi dari SolidiFI untuk evaluasi analisis dinamis dengan Echidna.
+Main configuration for the Dynamic Reentrancy Bug Injection Tool.
+Adapted from SolidiFI for dynamic analysis evaluation with Echidna.
 """
 
 import os
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
-# Direktori
+# Directories
 # ---------------------------------------------------------------------------
 BASE_DIR             = os.path.dirname(os.path.abspath(__file__))
 BASE_CONTRACTS_DIR   = os.path.join(BASE_DIR, "contracts")
@@ -25,7 +25,7 @@ load_dotenv()
 RPC_URL = os.getenv("ALCHEMY_RPC_URL")
 
 # ---------------------------------------------------------------------------
-# Varian Bug Reentrancy
+# Reentrancy Bug Variants
 # ---------------------------------------------------------------------------
 BUG_VARIANTS = [
     "single_function",
@@ -33,7 +33,7 @@ BUG_VARIANTS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Konfigurasi Echidna
+# Echidna Configuration
 # ---------------------------------------------------------------------------
 ECHIDNA_CONFIG = {
     "testLimit":       150_000,
@@ -42,32 +42,35 @@ ECHIDNA_CONFIG = {
     "coverage":        True,
     "timeout":         180,
     "deployer":        "0x30000000000000000000000000000000000000000",
-    "sender":          ["0x30000000000000000000000000000000000000000", "0x10000000000000000000000000000000000000000"],
+    "sender":          [
+        "0x30000000000000000000000000000000000000000",
+        "0x10000000000000000000000000000000000000000",
+    ],
     "balanceAddr":     10_000,
     "balanceContract": 0,
     "maxTimeDelay":    3_600,
 }
 
 # ---------------------------------------------------------------------------
-# Kompilasi Solidity
+# Solidity Compilation
 # ---------------------------------------------------------------------------
-SOLIDITY_VERSION    = "0.8.0"
-SOLC_BINARY         = "solc"
+SOLIDITY_VERSION = "0.8.0"
+SOLC_BINARY      = "solc"
 
 # ---------------------------------------------------------------------------
-# Oracle Echidna
-# Nama fungsi oracle HARUS diawali "echidna_" agar dikenali Echidna
+# Echidna Oracle
+# The oracle function name MUST start with "echidna_" to be recognized by Echidna.
 # ---------------------------------------------------------------------------
 ORACLE_FUNCTION_PREFIX = "echidna_"
 ORACLE_FUNCTION_NAME   = "echidna_cekReentrant"
 
 # ---------------------------------------------------------------------------
-# Nama Variabel Pelacak Internal
+# Internal Tracker Variable Name
 # ---------------------------------------------------------------------------
 TRACKER_VAR_NAME = "totalDepositsHZ"
 
 # ---------------------------------------------------------------------------
-# Timeout (detik)
+# Timeouts (seconds)
 # ---------------------------------------------------------------------------
 COMPILATION_TIMEOUT = 30
 ECHIDNA_TIMEOUT     = 195
@@ -75,4 +78,4 @@ ECHIDNA_TIMEOUT     = 195
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-LOG_LEVEL = "INFO"   # Pilihan: DEBUG | INFO | WARNING | ERROR
+LOG_LEVEL = "INFO"   # Options: DEBUG | INFO | WARNING | ERROR

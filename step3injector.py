@@ -1,123 +1,117 @@
 """
 STEP 3 — BUG INJECTION
 =========================
-Menyisipkan pola kerentanan reentrancy ke dalam kontrak yang sudah
-diinstrumentasi. Menghasilkan dua varian kontrak per base contract:
-    - single_function  : reentrancy dalam satu fungsi
-    - cross_function   : reentrancy antar dua fungsi
+Injects reentrancy vulnerability patterns into instrumented contracts.
+Produces two bug variants per base contract:
+    - single_function : reentrancy within a single function
+    - cross_function  : reentrancy across two separate functions
 """
 
+import json
 import os
 import re
-import json
 from typing import Dict, List, Optional, Tuple
 
-from config import (
-    INSTRUMENTED_DIR,
-    INJECTED_DIR,
-    BUG_VARIANTS,
-    ORACLE_FUNCTION_NAME,
-    LOGS_DIR,
-)
+from config import BUG_VARIANTS, INJECTED_DIR, INSTRUMENTED_DIR, LOGS_DIR, ORACLE_FUNCTION_NAME
 from logger import get_logger
 
 log = get_logger("injector")
 
 
 # ---------------------------------------------------------------------------
-# Template bug reentrancy
+# Bug templates
 # ---------------------------------------------------------------------------
 
-# Placeholder {dummy_mapping} diisi hanya jika tidak ada mapping asli di kontrak.
-# Placeholder {mapping_var} adalah nama variabel mapping yang digunakan.
+# {dummy_mapping} is only populated when no existing mapping is found in the contract.
+# {mapping_var}   is the name of the balance mapping variable to use.
 
 SINGLE_FUNCTION_TEMPLATE = """
-    // [INJECTED] Mapping saldo (diisi otomatis jika tidak ada di kontrak asli)
+    // [INJECTED] Balance mapping (auto-populated if none exists in the original contract)
     {dummy_mapping}
 
     // [BUG] Single-Function Reentrancy
-    // Transfer dilakukan SEBELUM state diperbarui → melanggar pola CEI
+    // Transfer is performed BEFORE state is updated — violates the CEI pattern
     function bug_reentrancy_single(uint256 _amount) public {{
-        // Isi saldo otomatis agar Echidna bisa mencapai fase reentrancy
+        // Auto-fund the sender so Echidna can reach the reentrancy phase
         if ({mapping_var}[msg.sender] < _amount) {{
             unchecked {{ {mapping_var}[msg.sender] += _amount; }}
         }}
 
-        require(_amount > 0,                              "Amount harus > 0");
-        require({mapping_var}[msg.sender] >= _amount,     "Saldo tidak cukup");
+        require(_amount > 0,                          "Amount must be > 0");
+        require({mapping_var}[msg.sender] >= _amount, "Insufficient balance");
 
-        // Jika fungsi dipanggil kembali saat masih terkunci → bug terpicu
-        if (hz_locked) {{ hz_is_reentered = true; }}
-        hz_locked = true;
+        // If re-entered while locked, trip the alarm
+        if (lockedHZ) {{ isReenteredHZ = true; }}
+        lockedHZ = true;
 
         (bool success, ) = msg.sender.call{{value: _amount}}("");
-        require(success, "Transfer gagal");
+        require(success, "Transfer failed");
 
-        // unchecked: nonaktifkan proteksi underflow bawaan Solidity 0.8+
+        // unchecked: disable Solidity 0.8+ built-in underflow protection
         unchecked {{ {mapping_var}[msg.sender] -= _amount; }}
 
-        hz_locked = false;
+        lockedHZ = false;
     }}
 """
 
 CROSS_FUNCTION_TEMPLATE = """
-    // [INJECTED] Mapping saldo (diisi otomatis jika tidak ada di kontrak asli)
+    // [INJECTED] Balance mapping (auto-populated if none exists in the original contract)
     {dummy_mapping}
 
-    // [BUG] Cross-Function Reentrancy — fungsi penarikan
-    // State belum diperbarui saat external call dilakukan
+    // [BUG] Cross-Function Reentrancy — withdrawal function
+    // State has not been updated when the external call is made
     function bug_reentrancy_cross_withdraw(uint256 _amount) public {{
         if ({mapping_var}[msg.sender] < _amount) {{
             unchecked {{ {mapping_var}[msg.sender] += _amount; }}
         }}
 
-        require(_amount > 0,                          "Amount harus > 0");
-        require({mapping_var}[msg.sender] >= _amount, "Saldo tidak cukup");
+        require(_amount > 0,                          "Amount must be > 0");
+        require({mapping_var}[msg.sender] >= _amount, "Insufficient balance");
 
-        if (hz_locked) {{ hz_is_reentered = true; }}
-        hz_locked = true;
+        if (lockedHZ) {{ isReenteredHZ = true; }}
+        lockedHZ = true;
 
         (bool success, ) = msg.sender.call{{value: _amount}}("");
-        require(success, "Transfer gagal");
+        require(success, "Transfer failed");
 
         unchecked {{ {mapping_var}[msg.sender] -= _amount; }}
 
-        hz_locked = false;
+        lockedHZ = false;
     }}
 
-    // [BUG] Cross-Function Reentrancy — fungsi pembaca saldo
-    // Membaca state yang mungkin belum konsisten akibat reentrancy di atas
+    // [BUG] Cross-Function Reentrancy — balance reader
+    // Reads state that may be inconsistent due to reentrancy in the function above
     function bug_reentrancy_cross_getBalance() public view returns (uint256) {{
         return {mapping_var}[msg.sender];
     }}
 """
 
 RECEIVE_FUNCTION_TEMPLATE = """
-    // [INJECTED] Receive function agar kontrak dapat menerima Ether
+    // [INJECTED] Receive function so the contract can accept Ether
     receive() external payable {{}}
 """
 
 
 # ---------------------------------------------------------------------------
-# Pola regex
+# Regex patterns
 # ---------------------------------------------------------------------------
 
-# Mendeteksi mapping(address => uint) yang umum digunakan sebagai saldo
+# Detects mapping(address => uint) commonly used as a balance store
 _MAPPING_PATTERN = re.compile(
     r"mapping\s*\(\s*address[\s\w]*=>\s*uint(?:256)?[\s\w]*\)\s+"
     r"(?:public\s+|private\s+|internal\s+)?(\w+)\s*;",
     re.IGNORECASE,
 )
-_HAS_RECEIVE    = re.compile(r"receive\s*\(\s*\)\s+external\s+payable",  re.MULTILINE)
-_HAS_FALLBACK   = re.compile(r"fallback\s*\(\s*\)\s+external\s+payable", re.MULTILINE)
+_HAS_RECEIVE  = re.compile(r"receive\s*\(\s*\)\s+external\s+payable",  re.MULTILINE)
+_HAS_FALLBACK = re.compile(r"fallback\s*\(\s*\)\s+external\s+payable", re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------
-# Utilitas internal
+# Internal utilities
 # ---------------------------------------------------------------------------
 
 def _detect_main_contract_name(source: str) -> Optional[str]:
-    """Mendeteksi nama kontrak pertama (bukan interface/library)."""
+    """Detect the name of the first contract definition (not interface or library)."""
     for line in source.splitlines():
         stripped = line.strip()
         if stripped.startswith("contract ") and "{" in stripped:
@@ -129,8 +123,8 @@ def _detect_main_contract_name(source: str) -> Optional[str]:
 
 def _find_mapping_variable(source: str) -> Optional[str]:
     """
-    Mencari nama variabel mapping(address => uint) yang paling relevan.
-    Prioritas: kata kunci semantik seperti 'balance', 'deposit', dll.
+    Find the most relevant mapping(address => uint) variable name.
+    Priority is given to semantically meaningful keywords.
     """
     matches = _MAPPING_PATTERN.findall(source)
     if not matches:
@@ -146,12 +140,12 @@ def _find_mapping_variable(source: str) -> Optional[str]:
 
 
 def _needs_receive_function(source: str) -> bool:
-    """Mengembalikan True jika kontrak belum memiliki receive() atau fallback() payable."""
+    """Return True if the contract has no receive() or payable fallback() function."""
     return not (_HAS_RECEIVE.search(source) or _HAS_FALLBACK.search(source))
 
 
 def _insert_before_contract_close(source: str, contract_name: str, code: str) -> str:
-    """Menyisipkan *code* tepat sebelum kurung kurawal penutup kontrak."""
+    """Insert *code* immediately before the closing brace of the target contract."""
     pattern = r"contract\s+" + re.escape(contract_name) + r"\s*\{"
     match = re.search(pattern, source)
 
@@ -174,7 +168,7 @@ def _insert_before_contract_close(source: str, contract_name: str, code: str) ->
 
 
 def _find_injection_line(source: str, marker: str) -> int:
-    """Mengembalikan nomor baris tempat *marker* pertama kali muncul, atau -1."""
+    """Return the line number where *marker* first appears, or -1 if not found."""
     for i, line in enumerate(source.splitlines(), start=1):
         if marker in line:
             return i
@@ -182,7 +176,7 @@ def _find_injection_line(source: str, marker: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Injeksi per varian
+# Per-variant injection functions
 # ---------------------------------------------------------------------------
 
 def inject_single_function(
@@ -190,7 +184,7 @@ def inject_single_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """Menyuntikkan pola single-function reentrancy."""
+    """Inject the single-function reentrancy pattern."""
     dummy = (
         f"mapping(address => uint256) public {mapping_var};"
         if mapping_var == "dummyBalancesHZ" else ""
@@ -213,8 +207,8 @@ def inject_single_function(
         "injected_function": "bug_reentrancy_single",
         "injection_line":    _find_injection_line(source, "bug_reentrancy_single"),
         "bug_description": (
-            "Transfer dilakukan sebelum state diperbarui (melanggar pola CEI). "
-            "Penyerang dapat memanggil fungsi ini berulang kali sebelum saldo dikurangi."
+            "Transfer is performed before state is updated (violates CEI pattern). "
+            "An attacker can call this function repeatedly before the balance is decremented."
         ),
     }
     return source, log_entry
@@ -225,7 +219,7 @@ def inject_cross_function(
     mapping_var: str,
     contract_name: str,
 ) -> Tuple[str, dict]:
-    """Menyuntikkan pola cross-function reentrancy."""
+    """Inject the cross-function reentrancy pattern."""
     dummy = (
         f"mapping(address => uint256) public {mapping_var};"
         if mapping_var == "dummyBalancesHZ" else ""
@@ -251,15 +245,15 @@ def inject_cross_function(
         ],
         "injection_line": _find_injection_line(source, "bug_reentrancy_cross_withdraw"),
         "bug_description": (
-            "Dua fungsi berbagi state yang belum konsisten. "
-            "bug_reentrancy_cross_withdraw melakukan transfer sebelum update state; "
-            "bug_reentrancy_cross_getBalance membaca state yang mungkin belum konsisten."
+            "Two functions share state that has not yet been updated consistently. "
+            "bug_reentrancy_cross_withdraw transfers before updating state; "
+            "bug_reentrancy_cross_getBalance reads state that may be inconsistent."
         ),
     }
     return source, log_entry
 
 
-# Dispatcher varian → fungsi injeksi
+# Dispatcher: variant name → injection function
 _VARIANT_INJECTORS = {
     "single_function": inject_single_function,
     "cross_function":  inject_cross_function,
@@ -267,7 +261,7 @@ _VARIANT_INJECTORS = {
 
 
 # ---------------------------------------------------------------------------
-# Fungsi publik
+# Public API
 # ---------------------------------------------------------------------------
 
 def inject_contract(
@@ -276,22 +270,22 @@ def inject_contract(
     variants: List[str] = BUG_VARIANTS,
 ) -> Dict[str, dict]:
     """
-    Menyuntikkan bug reentrancy ke dalam satu kontrak dengan beberapa varian.
+    Inject reentrancy bugs into a single contract for each requested variant.
 
     Args:
-        input_path : Path ke file .sol terinstrumentasi.
-        output_dir : Direktori output untuk file hasil injeksi.
-        variants   : Daftar varian bug yang akan disuntikkan.
+        input_path : Path to the instrumented .sol file.
+        output_dir : Directory where injected files will be written.
+        variants   : List of bug variants to inject.
 
     Returns:
-        Dict { variant: log_entry } untuk setiap varian yang berhasil.
+        Dict mapping { variant: log_entry } for each successfully injected variant.
     """
     fname = os.path.basename(input_path)
     stem  = os.path.splitext(fname)[0]
     results: Dict[str, dict] = {}
 
     if not os.path.isfile(input_path):
-        log.error("File tidak ditemukan: %s", input_path)
+        log.error("File not found: %s", input_path)
         return results
 
     with open(input_path, encoding="utf-8", errors="ignore") as f:
@@ -299,26 +293,26 @@ def inject_contract(
 
     contract_name = _detect_main_contract_name(original_source)
     if contract_name is None:
-        log.error("Tidak dapat mendeteksi nama kontrak: %s", fname)
+        log.error("Could not detect contract name in: %s", fname)
         return results
 
     mapping_var = _find_mapping_variable(original_source)
     if mapping_var is None:
-        log.warning("Mapping tidak ditemukan di '%s', gunakan nama default.", fname)
+        log.warning("No mapping variable found in '%s' — using default name.", fname)
         mapping_var = "dummyBalancesHZ"
 
-    log.info("  Kontrak: %-30s  Mapping: %s", contract_name, mapping_var)
+    log.info("  Contract: %-30s  Mapping: %s", contract_name, mapping_var)
 
     for variant in variants:
         injector = _VARIANT_INJECTORS.get(variant)
         if injector is None:
-            log.warning("Varian tidak dikenal: %s", variant)
+            log.warning("Unknown variant: %s", variant)
             continue
 
         try:
             injected_source, entry = injector(original_source, mapping_var, contract_name)
         except Exception as e:
-            log.error("Gagal menyuntikkan varian '%s' pada '%s': %s", variant, fname, e)
+            log.error("Failed to inject variant '%s' into '%s': %s", variant, fname, e)
             continue
 
         output_filename = f"{stem}_{variant}.sol"
@@ -335,7 +329,7 @@ def inject_contract(
         })
         results[variant] = entry
 
-        log.info("  ✓ [%-16s] → %s  (baris %d)",
+        log.info("  ✓ [%-16s] → %s  (line %d)",
                  variant, output_filename, entry.get("injection_line", -1))
 
     return results
@@ -348,16 +342,16 @@ def run_injection(
     variants: List[str]   = BUG_VARIANTS,
 ) -> List[dict]:
     """
-    Menyuntikkan bug reentrancy ke semua kontrak valid.
+    Inject bugs into all valid instrumented contracts.
 
     Args:
-        instrumented_dir : Direktori kontrak terinstrumentasi.
-        output_dir       : Direktori output kontrak ter-inject.
-        valid_files      : Daftar nama file yang akan diproses (None = semua).
-        variants         : Varian bug yang akan disuntikkan.
+        instrumented_dir : Directory containing instrumented contracts.
+        output_dir       : Output directory for injected contracts.
+        valid_files      : Filenames to process (None = all files in the directory).
+        variants         : Bug variants to inject.
 
     Returns:
-        List semua log_entry dari injeksi yang berhasil.
+        List of all log entries from successful injections.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -370,20 +364,22 @@ def run_injection(
         sol_files = sorted(valid_files)
 
     if not sol_files:
-        log.warning("Tidak ada file untuk diproses.")
+        log.warning("No files to process.")
         return []
 
     log.info("=" * 60)
     log.info("STEP 3: BUG INJECTION")
     log.info("=" * 60)
-    log.info("Total kontrak : %d", len(sol_files))
-    log.info("Varian        : %s", variants)
+    log.info("Contracts to inject : %d", len(sol_files))
+    log.info("Variants            : %s", variants)
 
     all_logs: List[dict] = []
     for fname in sol_files:
         log.info("")
-        log.info("Memproses: %s", fname)
-        for entry in inject_contract(os.path.join(instrumented_dir, fname), output_dir, variants).values():
+        log.info("Processing: %s", fname)
+        for entry in inject_contract(
+            os.path.join(instrumented_dir, fname), output_dir, variants
+        ).values():
             all_logs.append(entry)
 
     log_path = os.path.join(LOGS_DIR, "injection_log.json")
@@ -392,8 +388,8 @@ def run_injection(
         json.dump(all_logs, f, indent=2, ensure_ascii=False)
 
     log.info("")
-    log.info("Total bug disuntikkan : %d", len(all_logs))
-    log.info("Injection log         : %s", log_path)
+    log.info("Total bugs injected : %d", len(all_logs))
+    log.info("Injection log saved : %s", log_path)
     return all_logs
 
 
@@ -405,7 +401,10 @@ if __name__ == "__main__":
 
     if len(sys.argv) == 3:
         results = inject_contract(sys.argv[1], sys.argv[2])
-        print(f"Berhasil menyuntikkan {len(results)} varian." if results else "Gagal menyuntikkan bug.")
+        print(
+            f"Successfully injected {len(results)} variant(s)."
+            if results else "Bug injection failed."
+        )
         sys.exit(0 if results else 1)
     else:
         logs = run_injection()

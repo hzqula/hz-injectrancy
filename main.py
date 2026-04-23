@@ -1,29 +1,29 @@
 """
-MAIN PIPELINE — ORKESTRASI SEMUA TAHAPAN
-==========================================
-Menjalankan seluruh pipeline penelitian secara berurutan:
+MAIN PIPELINE — ORCHESTRATION OF ALL STAGES
+=============================================
+Runs the full research pipeline in sequence:
 
-    Step 1  Instrumentasi Oracle
+    Step 1  Oracle Instrumentation
             base_contract → instrumented_contract
 
-    Step 2  Verifikasi Kompilasi
+    Step 2  Compilation Verification
             instrumented_contract → valid / invalid
 
     Step 3  Bug Injection
             instrumented_contract (valid) → injected_contract
 
-    Step 4  Pengujian Echidna
+    Step 4  Echidna Fuzzing
             injected_contract → echidna_results
 
-    Step 5  Analisis Hasil
-            echidna_results → metrik (detection rate, activation rate, avg time)
+    Step 5  Results Analysis
+            echidna_results → metrics (detection rate, activation rate, avg time)
 
-Penggunaan:
-    python main.py                   # Pipeline penuh (step 1–5)
-    python main.py --from-step 3     # Mulai dari step tertentu
-    python main.py --step 1          # Jalankan satu step saja
-    python main.py --check           # Periksa prasyarat saja
-    python main.py --verbose         # Log lebih detail
+Usage:
+    python main.py                   # Full pipeline (steps 1–5)
+    python main.py --from-step 3     # Resume from a specific step
+    python main.py --step 1          # Run a single step only
+    python main.py --check           # Check prerequisites only
+    python main.py --verbose         # Enable DEBUG logging
 """
 
 import argparse
@@ -57,25 +57,25 @@ log = get_logger("pipeline")
 
 
 # ---------------------------------------------------------------------------
-# Banner & header
+# Banner & step headers
 # ---------------------------------------------------------------------------
 
 _BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
 ║     DYNAMIC REENTRANCY BUG INJECTION TOOL                    ║
-║     Evaluasi Analisis Dinamis (Echidna) via Bug Injection    ║
+║     Dynamic Analysis Evaluation (Echidna) via Bug Injection  ║
 ║                                                              ║
-║     Referensi: SolidiFI (Ghaleb & Pattabiraman, 2020)        ║
-║     Adaptasi : Analisis Dinamis untuk Reentrancy             ║
+║     Reference: SolidiFI (Ghaleb & Pattabiraman, 2020)        ║
+║     Adapted for: Dynamic Reentrancy Analysis                 ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
 _STEP_LABELS = {
-    1: "INSTRUMENTASI ORACLE",
-    2: "VERIFIKASI KOMPILASI",
+    1: "ORACLE INSTRUMENTATION",
+    2: "COMPILATION VERIFICATION",
     3: "BUG INJECTION",
-    4: "PENGUJIAN ECHIDNA",
-    5: "ANALISIS HASIL",
+    4: "ECHIDNA FUZZING",
+    5: "RESULTS ANALYSIS",
 }
 
 
@@ -88,51 +88,51 @@ def _step_header(step_num: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Prasyarat
+# Prerequisites check
 # ---------------------------------------------------------------------------
 
 def _check_prerequisites() -> bool:
-    """Memeriksa semua prasyarat sebelum pipeline dijalankan."""
+    """Verify all prerequisites before running the pipeline."""
     issues = []
 
-    # Direktori contracts
+    # Contracts directory
     if not os.path.isdir(BASE_CONTRACTS_DIR):
         issues.append(
-            f"Direktori tidak ditemukan: {BASE_CONTRACTS_DIR}\n"
-            f"  → Buat direktori dan letakkan file .sol di dalamnya."
+            f"Directory not found: {BASE_CONTRACTS_DIR}\n"
+            f"  → Create the directory and place your .sol files inside."
         )
     elif not any(f.endswith(".sol") for f in os.listdir(BASE_CONTRACTS_DIR)):
         issues.append(
-            f"Tidak ada file .sol di: {BASE_CONTRACTS_DIR}\n"
-            f"  → Tambahkan minimal satu kontrak Solidity."
+            f"No .sol files found in: {BASE_CONTRACTS_DIR}\n"
+            f"  → Add at least one Solidity contract."
         )
 
     # solc
     try:
         r = subprocess.run(["solc", "--version"], capture_output=True, timeout=5)
         if r.returncode != 0:
-            issues.append("solc tidak merespons dengan benar.")
+            issues.append("solc did not respond correctly.")
     except FileNotFoundError:
         issues.append(
-            "solc tidak ditemukan.\n"
+            "solc not found.\n"
             "  → Install: https://docs.soliditylang.org/en/latest/installing-solidity.html"
         )
     except Exception:
-        issues.append("Gagal memeriksa solc.")
+        issues.append("Failed to check solc.")
 
-    # echidna (opsional — hanya peringatan)
+    # echidna (optional — warning only)
     try:
         subprocess.run(["echidna", "--version"], capture_output=True, timeout=5)
     except FileNotFoundError:
         log.warning(
-            "Echidna tidak ditemukan. Step 4 akan menghasilkan status ERROR.\n"
+            "Echidna not found. Step 4 will produce ERROR status.\n"
             "  → Install: https://github.com/crytic/echidna"
         )
     except Exception:
         pass
 
     if issues:
-        log.error("Prasyarat tidak terpenuhi:")
+        log.error("Prerequisites not met:")
         for issue in issues:
             log.error("  ✗ %s", issue)
         return False
@@ -141,19 +141,21 @@ def _check_prerequisites() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# State pipeline
+# Pipeline state persistence
 # ---------------------------------------------------------------------------
 
 _STATE_PATH = os.path.join(LOGS_DIR, "pipeline_state.json")
 
 
 def _save_state(state: dict) -> None:
+    """Persist pipeline state to JSON for resumability."""
     os.makedirs(LOGS_DIR, exist_ok=True)
     with open(_STATE_PATH, "w") as f:
         json.dump(state, f, indent=2)
 
 
 def _load_state() -> dict:
+    """Load previously saved pipeline state."""
     if os.path.isfile(_STATE_PATH):
         with open(_STATE_PATH) as f:
             return json.load(f)
@@ -161,7 +163,7 @@ def _load_state() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Fungsi per step
+# Per-step runners
 # ---------------------------------------------------------------------------
 
 def run_step1(state: dict) -> bool:
@@ -191,7 +193,7 @@ def run_step2(state: dict) -> list:
     }
     _save_state(state)
     if not valid_files:
-        log.error("Tidak ada kontrak yang lulus verifikasi kompilasi.")
+        log.error("No contracts passed compilation verification.")
     return valid_files
 
 
@@ -241,96 +243,95 @@ def run_step5(state: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Fungsi pipeline utama
+# Full pipeline orchestration
 # ---------------------------------------------------------------------------
 
 def _load_injection_log() -> list:
-    """Memuat injection log dari file JSON jika ada."""
+    """Load the injection log from disk if available."""
     path = os.path.join(LOGS_DIR, "injection_log.json")
     if os.path.isfile(path):
         with open(path) as f:
             data = json.load(f)
-        log.info("Injection log dimuat: %d entri", len(data))
+        log.info("Injection log loaded: %d entries", len(data))
         return data
-    log.warning("Injection log tidak ditemukan.")
+    log.warning("Injection log not found.")
     return []
 
 
 def run_full_pipeline(from_step: int = 1) -> bool:
     """
-    Menjalankan pipeline lengkap mulai dari *from_step*.
+    Execute the full pipeline starting from *from_step*.
 
     Returns:
-        True jika pipeline selesai tanpa error kritis.
+        True if the pipeline completes without a critical error.
     """
-    start  = time.time()
-    state  = _load_state() if from_step > 1 else {}
+    start = time.time()
+    state = _load_state() if from_step > 1 else {}
 
-    log.info("Mulai pipeline dari step %d", from_step)
+    log.info("Starting pipeline from step %d", from_step)
 
     # Step 1
     if from_step <= 1:
         if not run_step1(state):
-            log.error("Step 1 gagal. Pipeline dihentikan.")
+            log.error("Step 1 failed. Pipeline aborted.")
             return False
     else:
-        log.info("⏭  Melewati Step 1")
+        log.info("⏭  Skipping Step 1")
 
     # Step 2
     if from_step <= 2:
         valid_files = run_step2(state)
         if not valid_files:
-            log.error("Step 2 gagal. Pipeline dihentikan.")
+            log.error("Step 2 failed. Pipeline aborted.")
             return False
     else:
         valid_files = state.get("step2", {}).get("valid", [])
-        log.info("⏭  Melewati Step 2  (%d file valid dari state)", len(valid_files))
+        log.info("⏭  Skipping Step 2  (%d valid files from state)", len(valid_files))
 
     # Step 3
     if from_step <= 3:
         injection_logs = run_step3(state, valid_files)
         if not injection_logs:
-            log.error("Step 3 gagal. Tidak ada bug yang berhasil disuntikkan.")
+            log.error("Step 3 failed. No bugs were successfully injected.")
             return False
     else:
         injection_logs = _load_injection_log() if from_step > 3 else []
-        log.info("⏭  Melewati Step 3")
+        log.info("⏭  Skipping Step 3")
 
     # Step 4
     if from_step <= 4:
         echidna_results = run_step4(state, injection_logs)
         if not echidna_results:
-            log.warning("Step 4 tidak menghasilkan output (mungkin Echidna belum terinstall).")
+            log.warning("Step 4 produced no output (Echidna may not be installed).")
     else:
-        log.info("⏭  Melewati Step 4")
+        log.info("⏭  Skipping Step 4")
 
     # Step 5
     if from_step <= 5:
         run_step5(state)
     else:
-        log.info("⏭  Melewati Step 5")
+        log.info("⏭  Skipping Step 5")
 
-    # Ringkasan akhir
+    # Final summary box
     elapsed = time.time() - start
     log.info("")
     log.info("╔══════════════════════════════════════════════════════════╗")
-    log.info("║  ✓  PIPELINE SELESAI                                     ║")
+    log.info("║  ✓  PIPELINE COMPLETE                                    ║")
     log.info("╠══════════════════════════════════════════════════════════╣")
-    log.info("║  Waktu total    : %-37s║", f"{elapsed:.1f}s  ({elapsed / 60:.1f} menit)")
-    log.info("║  Hasil analisis : %-37s║", _shorten(ANALYSIS_RESULTS_DIR, 37))
-    log.info("║  Log lengkap    : %-37s║", _shorten(LOGS_DIR, 37))
+    log.info("║  Total time     : %-37s║", f"{elapsed:.1f}s  ({elapsed / 60:.1f} min)")
+    log.info("║  Analysis output: %-37s║", _shorten(ANALYSIS_RESULTS_DIR, 37))
+    log.info("║  Full log       : %-37s║", _shorten(LOGS_DIR, 37))
 
-    # Tampilkan file ringkasan terbaru jika ada
     summary_files = sorted(glob.glob(os.path.join(ANALYSIS_RESULTS_DIR, "summary_*.json")))
     if summary_files:
-        log.info("║  Ringkasan      : %-37s║", _shorten(summary_files[-1], 37))
+        log.info("║  Latest summary : %-37s║", _shorten(summary_files[-1], 37))
 
     log.info("╚══════════════════════════════════════════════════════════╝")
     return True
 
 
 def run_single_step(step_num: int) -> bool:
-    """Menjalankan satu step saja tanpa step lainnya."""
+    """Run exactly one pipeline step without executing any other steps."""
     state = _load_state()
 
     dispatch = {
@@ -343,18 +344,18 @@ def run_single_step(step_num: int) -> bool:
 
     fn = dispatch.get(step_num)
     if fn is None:
-        log.error("Nomor step tidak valid: %d (harus 1–5)", step_num)
+        log.error("Invalid step number: %d (must be 1–5)", step_num)
         return False
 
     return bool(fn())
 
 
 # ---------------------------------------------------------------------------
-# Utilitas
+# Utility
 # ---------------------------------------------------------------------------
 
 def _shorten(path: str, max_len: int) -> str:
-    """Memotong path agar tidak melebihi *max_len* karakter."""
+    """Truncate *path* to at most *max_len* characters for display."""
     return path if len(path) <= max_len else "…" + path[-(max_len - 1):]
 
 
@@ -369,42 +370,49 @@ def main() -> None:
         description="Dynamic Reentrancy Bug Injection Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Contoh:
-  python main.py                  # Pipeline penuh (step 1–5)
-  python main.py --from-step 3    # Mulai dari step 3
-  python main.py --step 2         # Jalankan step 2 saja
-  python main.py --check          # Cek prasyarat saja
+Examples:
+  python main.py                  # Full pipeline (steps 1–5)
+  python main.py --from-step 3    # Resume from step 3
+  python main.py --step 2         # Run step 2 only
+  python main.py --check          # Check prerequisites only
         """,
     )
-    parser.add_argument("--from-step", type=int, default=1,  choices=range(1, 6),
-                        metavar="N", help="Mulai pipeline dari step N (1–5, default: 1)")
-    parser.add_argument("--step",      type=int, choices=range(1, 6),
-                        metavar="N", help="Jalankan satu step saja")
-    parser.add_argument("--check",   action="store_true", help="Periksa prasyarat saja")
-    parser.add_argument("--verbose", action="store_true", help="Tampilkan log DEBUG")
+    parser.add_argument(
+        "--from-step", type=int, default=1, choices=range(1, 6), metavar="N",
+        help="Start the pipeline from step N (1–5, default: 1)",
+    )
+    parser.add_argument(
+        "--step", type=int, choices=range(1, 6), metavar="N",
+        help="Run a single step only",
+    )
+    parser.add_argument("--check",   action="store_true", help="Check prerequisites only")
+    parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging")
     args = parser.parse_args()
 
     if args.verbose:
         import logging
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Mode check saja
+    # Prerequisites-only mode
     if args.check:
         ok = _check_prerequisites()
-        log.info("✓ Semua prasyarat terpenuhi." if ok else "✗ Ada prasyarat yang belum terpenuhi.")
+        log.info(
+            "✓ All prerequisites met." if ok
+            else "✗ Some prerequisites are not satisfied."
+        )
         sys.exit(0 if ok else 1)
 
     if not _check_prerequisites():
-        log.error("Pipeline tidak dapat dijalankan. Periksa prasyarat di atas.")
+        log.error("Pipeline cannot start. Address the issues listed above.")
         sys.exit(1)
 
-    log.info("Waktu mulai : %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    log.info("Start time : %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     if args.step is not None:
-        log.info("Mode        : single step (%d)", args.step)
+        log.info("Mode       : single step (%d)", args.step)
         ok = run_single_step(args.step)
     else:
-        log.info("Mode        : full pipeline (dari step %d)", args.from_step)
+        log.info("Mode       : full pipeline (from step %d)", args.from_step)
         ok = run_full_pipeline(from_step=args.from_step)
 
     sys.exit(0 if ok else 1)

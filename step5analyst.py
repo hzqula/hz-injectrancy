@@ -1,280 +1,268 @@
 """
-STEP 5 - ANALISIS HASIL
-=================================
-Menganalisis hasil pengujian Echidna dan menghitung metrik evaluasi
-sesuai proposal Bab 2.5 (Metrik Evaluasi):
+STEP 5 — RESULTS ANALYSIS
+===========================
+Analyzes Echidna test results and computes evaluation metrics:
 
-  1. Detection Rate    : Jumlah bug terdeteksi / total bug disuntikkan
-  2. Activation Rate   : Jumlah bug yang barisnya tercapai fuzzer / total
-  3. Avg Detection Time: Rata-rata waktu deteksi per varian bug
-
-Referensi proposal Bab 3.7 (Analisis Hasil)
+    1. Detection Rate     : bugs detected / total bugs injected
+    2. Activation Rate    : bug lines reached by fuzzer / total bugs injected
+    3. Avg Detection Time : mean detection time per bug variant (seconds)
 """
 
-import os
-import json
 import csv
-from typing import List, Dict, Optional
+import json
+import os
 from datetime import datetime
+from typing import Dict, List, Optional
 
-from config import (
-    ANALYSIS_RESULTS_DIR,
-    LOGS_DIR,
-    ECHIDNA_TIMEOUT,
-    BUG_VARIANTS,
-)
+from config import ANALYSIS_RESULTS_DIR, BUG_VARIANTS, ECHIDNA_TIMEOUT, LOGS_DIR
 from logger import get_logger
 
 log = get_logger("analyzer")
 
 
-# ─── Data Classes ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Metric dataclass
+# ---------------------------------------------------------------------------
 
 class MetricResult:
-    """Ringkasan metrik untuk satu varian bug."""
+    """Aggregated metrics for a single bug variant."""
 
-    def __init__(self, variant: str):
-        self.variant          = variant
-        self.total_injected   = 0
-        self.total_detected   = 0
-        self.total_activated  = 0
-        self.total_timeout    = 0
-        self.total_error      = 0
-        self.detection_times  = []   # deteksi waktu dalam detik (hanya yang DETECTED)
-        self.not_detected_files: List[str] = []
-        self.detected_files:    List[str] = []
+    def __init__(self, variant: str) -> None:
+        self.variant             = variant
+        self.total_injected      = 0
+        self.total_detected      = 0
+        self.total_activated     = 0
+        self.total_timeout       = 0
+        self.total_error         = 0
+        self.detection_times:    List[float] = []   # Only for DETECTED results
+        self.detected_files:     List[str]   = []
+        self.not_detected_files: List[str]   = []
+
+    # --- Derived properties ---
 
     @property
     def detection_rate(self) -> float:
-        """Detection Rate = Detected / Total Injected (Bab 2.5.1)"""
-        if self.total_injected == 0:
-            return 0.0
-        return self.total_detected / self.total_injected
+        """Detection Rate = Detected / Total Injected  (Chapter 2.5.1)"""
+        return self.total_detected / self.total_injected if self.total_injected else 0.0
 
     @property
     def activation_rate(self) -> float:
-        """Activation Rate = Activated / Total Injected (Bab 2.5.2)"""
-        if self.total_injected == 0:
-            return 0.0
-        return self.total_activated / self.total_injected
+        """Activation Rate = Activated / Total Injected  (Chapter 2.5.2)"""
+        return self.total_activated / self.total_injected if self.total_injected else 0.0
 
     @property
     def avg_detection_time(self) -> float:
         """
-        Rata-rata Waktu Deteksi Per Varian Bug (Bab 2.5.3)
-        Jika tidak terdeteksi = nilai timeout (default)
+        Average Detection Time  (Chapter 2.5.3).
+        Falls back to ECHIDNA_TIMEOUT when no detection times are recorded.
         """
-        if not self.detection_times:
-            return ECHIDNA_TIMEOUT
-        return sum(self.detection_times) / len(self.detection_times)
+        return (
+            sum(self.detection_times) / len(self.detection_times)
+            if self.detection_times
+            else ECHIDNA_TIMEOUT
+        )
 
     @property
     def total_neutralized(self) -> int:
         """
-        Neutralized = Bug berhasil diaktivasi (Activated), tetapi gagal merusak properti (Not Detected).
-        Ini membuktikan intervensi perlindungan dari kompilator (misal: Revert Underflow).
+        Neutralized = bugs that were activated but did NOT break the property.
+        Demonstrates compiler-level protection (e.g. Solidity 0.8+ underflow revert).
         """
         return self.total_activated - self.total_detected
 
     def to_dict(self) -> dict:
         return {
-            "variant":             self.variant,
-            "total_injected":      self.total_injected,
-            "total_detected":      self.total_detected,
-            "total_neutralized":   self.total_neutralized,
-            "total_not_detected":  self.total_injected - self.total_detected - self.total_timeout - self.total_error,
-            "total_activated":     self.total_activated,
-            "total_timeout":       self.total_timeout,
-            "total_error":         self.total_error,
-            "detection_rate":      round(self.detection_rate, 4),
-            "detection_rate_pct":  f"{self.detection_rate * 100:.2f}%",
-            "activation_rate":     round(self.activation_rate, 4),
-            "activation_rate_pct": f"{self.activation_rate * 100:.2f}%",
+            "variant":                self.variant,
+            "total_injected":         self.total_injected,
+            "total_detected":         self.total_detected,
+            "total_neutralized":      self.total_neutralized,
+            "total_not_detected":     (
+                self.total_injected
+                - self.total_detected
+                - self.total_timeout
+                - self.total_error
+            ),
+            "total_activated":        self.total_activated,
+            "total_timeout":          self.total_timeout,
+            "total_error":            self.total_error,
+            "detection_rate":         round(self.detection_rate, 4),
+            "detection_rate_pct":     f"{self.detection_rate * 100:.2f}%",
+            "activation_rate":        round(self.activation_rate, 4),
+            "activation_rate_pct":    f"{self.activation_rate * 100:.2f}%",
             "avg_detection_time_sec": round(self.avg_detection_time, 2),
-            "detected_files":      self.detected_files,
-            "not_detected_files":  self.not_detected_files,
+            "detected_files":         self.detected_files,
+            "not_detected_files":     self.not_detected_files,
         }
 
 
-# ─── Fungsi Analisis ──────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Data loaders
+# ---------------------------------------------------------------------------
 
-def load_echidna_results(results_json_path: str) -> list:
-    """Memuat hasil Echidna dari file JSON."""
-    if not os.path.isfile(results_json_path):
-        log.error("File hasil Echidna tidak ditemukan: %s", results_json_path)
+def load_echidna_results(path: str) -> list:
+    """Load Echidna results from a JSON file."""
+    if not os.path.isfile(path):
+        log.error("Echidna results file not found: %s", path)
         return []
-
-    with open(results_json_path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_injection_log(injection_log_path: str) -> list:
-    """Memuat injection log dari file JSON."""
-    if not os.path.isfile(injection_log_path):
-        log.error("Injection log tidak ditemukan: %s", injection_log_path)
+def load_injection_log(path: str) -> list:
+    """Load the injection log from a JSON file."""
+    if not os.path.isfile(path):
+        log.error("Injection log not found: %s", path)
         return []
-
-    with open(injection_log_path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+
+# ---------------------------------------------------------------------------
+# Metric computation
+# ---------------------------------------------------------------------------
 
 def compute_metrics(echidna_results: list) -> Dict[str, MetricResult]:
     """
-    Menghitung semua metrik dari hasil Echidna.
+    Compute all metrics from a list of Echidna results.
 
-    Return:
-        dict: {"single_function": MetricResult, "cross_function": MetricResult, ...}
+    Returns:
+        Dict mapping variant name → MetricResult, including an "overall" entry.
     """
-    # Inisialisasi metrik per varian
-    metrics: Dict[str, MetricResult] = {}
-    for variant in BUG_VARIANTS:
-        metrics[variant] = MetricResult(variant)
-
-    # Tambahkan entry "overall" untuk agregat semua varian
+    metrics: Dict[str, MetricResult] = {v: MetricResult(v) for v in BUG_VARIANTS}
     metrics["overall"] = MetricResult("overall")
 
-    for result in echidna_results:
-        variant = result.get("variant", "unknown")
-
-        # Normalisasi nama varian
+    for r in echidna_results:
+        variant = r.get("variant", "unknown")
         if variant not in metrics:
             metrics[variant] = MetricResult(variant)
 
-        mr = metrics[variant]
-        mr_overall = metrics["overall"]
+        mr      = metrics[variant]
+        overall = metrics["overall"]
 
-        # Tambah counter
-        mr.total_injected  += 1
-        mr_overall.total_injected += 1
+        mr.total_injected      += 1
+        overall.total_injected += 1
 
-        status = result.get("status", "UNKNOWN")
-        property_broken = result.get("property_broken", False)
-        bug_line_hit    = result.get("bug_line_hit", False)
-        detection_time  = result.get("detection_time_sec", -1.0)
-        source_file     = result.get("source_file", "unknown")
+        status          = r.get("status", "UNKNOWN")
+        property_broken = r.get("property_broken", False)
+        bug_line_hit    = r.get("bug_line_hit", False)
+        detection_time  = r.get("detection_time_sec", -1.0)
+        source_file     = r.get("source_file", "unknown")
 
-        # ── Detection Rate ─────────────────────────────────────────────────
+        # Detection Rate
         if status == "DETECTED" and property_broken:
-            mr.total_detected  += 1
-            mr_overall.total_detected += 1
+            mr.total_detected      += 1
+            overall.total_detected += 1
             mr.detected_files.append(source_file)
-            mr_overall.detected_files.append(source_file)
-
+            overall.detected_files.append(source_file)
             if detection_time > 0:
                 mr.detection_times.append(detection_time)
-                mr_overall.detection_times.append(detection_time)
+                overall.detection_times.append(detection_time)
         else:
             mr.not_detected_files.append(source_file)
-            mr_overall.not_detected_files.append(source_file)
+            overall.not_detected_files.append(source_file)
 
-        # ── Activation Rate ────────────────────────────────────────────────
+        # Activation Rate
         if bug_line_hit:
-            mr.total_activated  += 1
-            mr_overall.total_activated += 1
+            mr.total_activated      += 1
+            overall.total_activated += 1
 
-        # ── Status lainnya ─────────────────────────────────────────────────
+        # Other status counters
         if status == "TIMEOUT":
-            mr.total_timeout  += 1
-            mr_overall.total_timeout += 1
+            mr.total_timeout      += 1
+            overall.total_timeout += 1
         elif status == "ERROR":
-            mr.total_error  += 1
-            mr_overall.total_error += 1
+            mr.total_error      += 1
+            overall.total_error += 1
 
     return metrics
 
 
-def print_metrics_table(metrics: Dict[str, MetricResult]) -> None:
-    """Menampilkan tabel metrik ke console."""
-    separator = "=" * 95
-    log.info("")
-    log.info(separator)
-    log.info("HASIL ANALISIS - RINGKASAN METRIK")
-    log.info(separator)
+# ---------------------------------------------------------------------------
+# Display
+# ---------------------------------------------------------------------------
 
-    # Header tabel dengan kolom Neutralized
-    header = (
-        f"{'Varian':<20} | {'Total':<6} | {'Detected':<9} | "
-        f"{'Neutralized':<11} | {'DR%':<6} | {'Activated':<10} | {'AR%':<6} | {'Avg Time(s)':<12}"
+def print_metrics_table(metrics: Dict[str, MetricResult]) -> None:
+    """Print a formatted metrics summary table to the log."""
+    sep = "=" * 95
+    log.info("")
+    log.info(sep)
+    log.info("ANALYSIS RESULTS — METRICS SUMMARY")
+    log.info(sep)
+    log.info(
+        "%-20s | %-6s | %-9s | %-11s | %-6s | %-10s | %-6s | %-12s",
+        "Variant", "Total", "Detected", "Neutralized", "DR%", "Activated", "AR%", "Avg Time(s)",
     )
-    log.info(header)
     log.info("-" * 95)
 
-    for variant, mr in metrics.items():
+    for mr in metrics.values():
         if mr.total_injected == 0:
             continue
-
-        dr_pct  = mr.detection_rate  * 100
-        ar_pct  = mr.activation_rate * 100
-        avg_t   = mr.avg_detection_time
-
-        row = (
-            f"{mr.variant:<20} | {mr.total_injected:<6} | {mr.total_detected:<9} | "
-            f"{mr.total_neutralized:<11} | {dr_pct:<5.1f}% | {mr.total_activated:<10} | {ar_pct:<5.1f}% | {avg_t:<12.2f}"
+        log.info(
+            "%-20s | %-6d | %-9d | %-11d | %-5.1f%% | %-10d | %-5.1f%% | %-12.2f",
+            mr.variant,
+            mr.total_injected,
+            mr.total_detected,
+            mr.total_neutralized,
+            mr.detection_rate * 100,
+            mr.total_activated,
+            mr.activation_rate * 100,
+            mr.avg_detection_time,
         )
-        log.info(row)
 
-    log.info(separator)
+    log.info(sep)
 
 
-def export_to_csv(
-    metrics: Dict[str, MetricResult],
-    output_path: str,
-) -> None:
-    """Mengekspor metrik ke file CSV."""
+# ---------------------------------------------------------------------------
+# Export functions
+# ---------------------------------------------------------------------------
+
+def export_metrics_csv(metrics: Dict[str, MetricResult], output_path: str) -> None:
+    """Export the metrics summary to a CSV file."""
     fieldnames = [
-        "variant", "total_injected", "total_detected", "total_neutralized", "total_not_detected",
-        "total_activated", "total_timeout", "total_error",
+        "variant", "total_injected", "total_detected", "total_neutralized",
+        "total_not_detected", "total_activated", "total_timeout", "total_error",
         "detection_rate", "detection_rate_pct",
         "activation_rate", "activation_rate_pct",
         "avg_detection_time_sec",
     ]
-
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for mr in metrics.values():
             if mr.total_injected == 0:
                 continue
-            row = {k: mr.to_dict().get(k, "") for k in fieldnames}
-            writer.writerow(row)
+            writer.writerow({k: mr.to_dict().get(k, "") for k in fieldnames})
 
-    log.info("Metrik CSV tersimpan di: %s", output_path)
+    log.info("Metrics CSV     : %s", output_path)
 
 
-def export_detail_csv(
-    echidna_results: list,
-    output_path: str,
-) -> None:
-    """Mengekspor hasil per kontrak ke CSV."""
+def export_detail_csv(echidna_results: list, output_path: str) -> None:
+    """Export per-contract results to a CSV file."""
     fieldnames = [
         "source_file", "contract_name", "variant",
         "status", "property_broken", "bug_line_hit",
         "detection_time_sec", "error_message",
     ]
-
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for result in echidna_results:
-            row = {k: result.get(k, "") for k in fieldnames}
-            writer.writerow(row)
+        for r in echidna_results:
+            writer.writerow({k: r.get(k, "") for k in fieldnames})
 
-    log.info("Detail hasil CSV tersimpan di: %s", output_path)
+    log.info("Detail CSV      : %s", output_path)
 
 
-def generate_summary_json(
+def export_summary_json(
     metrics: Dict[str, MetricResult],
     echidna_results: list,
     output_path: str,
 ) -> None:
-    """Menghasilkan file ringkasan JSON lengkap."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    """Write a comprehensive JSON summary file."""
     summary = {
-        "timestamp":       timestamp,
-        "tool":            "Dynamic Reentrancy Bug Injection Tool",
-        "description":     "Evaluasi efektivitas Echidna dalam mendeteksi reentrancy via bug injection",
-        "reference":       "Ghaleb & Pattabiraman (2020) - SolidiFI, diadaptasi untuk analisis dinamis",
+        "timestamp":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "tool":        "Dynamic Reentrancy Bug Injection Tool",
+        "description": "Evaluation of Echidna's effectiveness in detecting reentrancy via bug injection",
+        "reference":   "Ghaleb & Pattabiraman (2020) — SolidiFI, adapted for dynamic analysis",
         "metrics_per_variant": {
             variant: mr.to_dict()
             for variant, mr in metrics.items()
@@ -282,28 +270,33 @@ def generate_summary_json(
         },
         "raw_results": echidna_results,
     }
-
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
-    log.info("Ringkasan JSON tersimpan di: %s", output_path)
+    log.info("Summary JSON    : %s", output_path)
 
+
+# ---------------------------------------------------------------------------
+# Main analysis runner
+# ---------------------------------------------------------------------------
 
 def run_analysis(
-    echidna_results_json: str = None,
-    injection_log_json: str   = None,
-    output_dir: str           = ANALYSIS_RESULTS_DIR,
+    echidna_results_json: Optional[str] = None,
+    injection_log_json: Optional[str]   = None,
+    output_dir: str                     = ANALYSIS_RESULTS_DIR,
 ) -> Dict[str, MetricResult]:
     """
-    Menjalankan analisis lengkap dari hasil Echidna.
+    Run the full analysis pipeline on Echidna results.
 
-    Parameter:
-        echidna_results_json : path ke hasil Echidna (JSON)
-        injection_log_json   : path ke injection log (JSON)
-        output_dir           : direktori output analisis
+    Args:
+        echidna_results_json : Path to the Echidna results JSON
+                               (default: logs/echidna_results.json).
+        injection_log_json   : Path to the injection log JSON
+                               (default: logs/injection_log.json).
+        output_dir           : Directory where output files will be written.
 
-    Return:
-        dict metrik per varian bug
+    Returns:
+        Dict mapping variant name → MetricResult.
     """
     if echidna_results_json is None:
         echidna_results_json = os.path.join(LOGS_DIR, "echidna_results.json")
@@ -313,92 +306,73 @@ def run_analysis(
     os.makedirs(output_dir, exist_ok=True)
 
     log.info("=" * 60)
-    log.info("STEP 5: ANALISIS HASIL")
+    log.info("STEP 5: RESULTS ANALYSIS")
     log.info("=" * 60)
 
-    # ── Muat data ──────────────────────────────────────────────────────────────
     echidna_results = load_echidna_results(echidna_results_json)
-    injection_log   = load_injection_log(injection_log_json)
-
     if not echidna_results:
-        log.error("Tidak ada hasil Echidna untuk dianalisis.")
+        log.error("No Echidna results available for analysis.")
         return {}
 
-    log.info("Total hasil Echidna dimuat: %d entri", len(echidna_results))
+    log.info("Results loaded: %d entries", len(echidna_results))
 
-    # ── Hitung metrik ──────────────────────────────────────────────────────────
     metrics = compute_metrics(echidna_results)
-
-    # ── Tampilkan tabel ────────────────────────────────────────────────────────
     print_metrics_table(metrics)
 
-    # ── Ekspor hasil ───────────────────────────────────────────────────────────
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    export_metrics_csv(metrics,        os.path.join(output_dir, f"metrics_summary_{ts}.csv"))
+    export_detail_csv(echidna_results, os.path.join(output_dir, f"results_detail_{ts}.csv"))
+    export_summary_json(
+        metrics, echidna_results, os.path.join(output_dir, f"summary_{ts}.json")
+    )
 
-    # CSV metrik ringkasan
-    csv_metrics_path = os.path.join(output_dir, f"metrics_summary_{timestamp}.csv")
-    export_to_csv(metrics, csv_metrics_path)
-
-    # CSV detail per kontrak
-    csv_detail_path = os.path.join(output_dir, f"results_detail_{timestamp}.csv")
-    export_detail_csv(echidna_results, csv_detail_path)
-
-    # JSON ringkasan lengkap
-    json_summary_path = os.path.join(output_dir, f"summary_{timestamp}.json")
-    generate_summary_json(metrics, echidna_results, json_summary_path)
-
-    # ── Tampilkan insight tambahan ─────────────────────────────────────────────
     overall = metrics.get("overall")
     if overall and overall.total_injected > 0:
         log.info("")
-        log.info("INSIGHT UTAMA:")
+        log.info("KEY INSIGHTS:")
         log.info(
-            "  Detection Rate  (keseluruhan): %.2f%% (%d/%d)",
+            "  Detection Rate  : %.2f%%  (%d / %d)",
             overall.detection_rate * 100,
             overall.total_detected,
             overall.total_injected,
         )
         log.info(
-            "  Activation Rate (keseluruhan): %.2f%% (%d/%d)",
+            "  Activation Rate : %.2f%%  (%d / %d)",
             overall.activation_rate * 100,
             overall.total_activated,
             overall.total_injected,
         )
         log.info(
-            "  Neutralized Bug              : %d/%d",
+            "  Neutralized     : %d / %d",
             overall.total_neutralized,
             overall.total_injected,
         )
         log.info(
-            "  Avg Deteksi (yang terdeteksi) : %.2f detik",
+            "  Avg Detect Time : %.2f seconds",
             overall.avg_detection_time,
         )
 
         if overall.not_detected_files:
             log.info("")
             log.info(
-                "  Bug TIDAK TERDETEKSI (%d kontrak) [Didominasi Neutralized]:",
+                "  Undetected bugs (%d contract(s)) [mostly Neutralized]:",
                 len(overall.not_detected_files),
             )
-            for f in overall.not_detected_files[:10]:  # tampilkan max 10
-                log.info("    - %s", f)
+            for fname in overall.not_detected_files[:10]:
+                log.info("    - %s", fname)
             if len(overall.not_detected_files) > 10:
-                log.info(
-                    "    ... dan %d lainnya",
-                    len(overall.not_detected_files) - 10,
-                )
+                log.info("    ... and %d more", len(overall.not_detected_files) - 10)
 
     return metrics
 
 
-# ─── Entry Point ──────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
 
     echidna_json   = sys.argv[1] if len(sys.argv) > 1 else None
     injection_json = sys.argv[2] if len(sys.argv) > 2 else None
-
     metrics = run_analysis(echidna_json, injection_json)
-    if not metrics:
-        sys.exit(1)
-    sys.exit(0)
+    sys.exit(0 if metrics else 1)
