@@ -5,9 +5,9 @@ Runs the full reentrancy detection pipeline for each experiment
 configuration defined in experiment_configs.py, then triggers
 a comparative analysis across all results.
 
-Step 1–3 dijalankan SEKALI (shared), karena hasilnya identik
-di semua experiment. Step 4–5 dijalankan per-experiment karena
-bergantung pada Echidna config yang berbeda-beda.
+Steps 1–3 run ONCE (shared) because their output is identical
+across all experiments. Steps 4–5 run per-experiment since they
+depend on each experiment's Echidna configuration.
 
 Usage:
     python run_experiments.py                        # Run all 3 experiments
@@ -19,8 +19,8 @@ Usage:
 Output structure:
     experiments/
     ├── _shared/
-    │   ├── instrumented_contracts/   ← hasil step 1 (dipakai semua exp)
-    │   ├── injected_contracts/       ← hasil step 3 (dipakai semua exp)
+    │   ├── instrumented_contracts/   ← step 1 output (shared across all experiments)
+    │   ├── injected_contracts/       ← step 3 output (shared across all experiments)
     │   └── logs/
     │       ├── shared_state.json
     │       └── injection_log.json
@@ -65,7 +65,7 @@ SHARED_ROOT      = os.path.join(EXPERIMENTS_ROOT, "_shared")
 # ---------------------------------------------------------------------------
 
 def _shared_dirs() -> Dict[str, str]:
-    """Direktori untuk hasil Step 1–3 yang dipakai bersama semua experiment."""
+    """Directories for Steps 1–3 output shared across all experiments."""
     return {
         "instrumented": os.path.join(SHARED_ROOT, "instrumented_contracts"),
         "injected":     os.path.join(SHARED_ROOT, "injected_contracts"),
@@ -74,7 +74,7 @@ def _shared_dirs() -> Dict[str, str]:
 
 
 def _exp_dirs(exp_name: str) -> Dict[str, str]:
-    """Direktori output khusus per-experiment (hanya step 4–5)."""
+    """Per-experiment output directories (Steps 4–5 only)."""
     root = os.path.join(EXPERIMENTS_ROOT, exp_name)
     return {
         "root":     root,
@@ -95,20 +95,22 @@ def _ensure_dirs(dirs: Dict[str, str]) -> None:
 
 def _patch_config(exp_cfg: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Monkey-patch config module dengan nilai experiment tertentu.
-    Hanya mengubah ECHIDNA_CONFIG dan ECHIDNA_TIMEOUT — path direktori
-    step 4–5 diatur langsung saat memanggil fungsi step.
+    Temporarily overwrite the config module with the given experiment's values.
+    Only ECHIDNA_CONFIG and ECHIDNA_TIMEOUT are modified — directory paths for
+    Steps 4–5 are set here as well and restored after the experiment completes.
+
+    Returns a snapshot of the original config values for restoration.
     """
     import config as cfg
 
     snapshot = {
-        "ECHIDNA_CONFIG":      dict(cfg.ECHIDNA_CONFIG),
-        "ECHIDNA_TIMEOUT":     cfg.ECHIDNA_TIMEOUT,
-        "INSTRUMENTED_DIR":    cfg.INSTRUMENTED_DIR,
-        "INJECTED_DIR":        cfg.INJECTED_DIR,
-        "ECHIDNA_RESULTS_DIR": cfg.ECHIDNA_RESULTS_DIR,
+        "ECHIDNA_CONFIG":       dict(cfg.ECHIDNA_CONFIG),
+        "ECHIDNA_TIMEOUT":      cfg.ECHIDNA_TIMEOUT,
+        "INSTRUMENTED_DIR":     cfg.INSTRUMENTED_DIR,
+        "INJECTED_DIR":         cfg.INJECTED_DIR,
+        "ECHIDNA_RESULTS_DIR":  cfg.ECHIDNA_RESULTS_DIR,
         "ANALYSIS_RESULTS_DIR": cfg.ANALYSIS_RESULTS_DIR,
-        "LOGS_DIR":            cfg.LOGS_DIR,
+        "LOGS_DIR":             cfg.LOGS_DIR,
     }
 
     dirs   = _exp_dirs(exp_cfg["name"])
@@ -117,11 +119,11 @@ def _patch_config(exp_cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg.ECHIDNA_CONFIG.update(exp_cfg["echidna_config"])
     cfg.ECHIDNA_TIMEOUT      = exp_cfg["echidna_timeout"]
 
-    # Step 1–3 pakai shared dirs
+    # Steps 1–3 use shared directories
     cfg.INSTRUMENTED_DIR     = shared["instrumented"]
     cfg.INJECTED_DIR         = shared["injected"]
 
-    # Step 4–5 pakai per-experiment dirs
+    # Steps 4–5 use per-experiment directories
     cfg.ECHIDNA_RESULTS_DIR  = dirs["echidna"]
     cfg.ANALYSIS_RESULTS_DIR = dirs["analysis"]
     cfg.LOGS_DIR             = dirs["logs"]
@@ -143,25 +145,25 @@ def _restore_config(snapshot: Dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FASE 1 — Shared Preparation (Step 1–3), dijalankan SEKALI
+# Phase 1 — Shared Preparation (Steps 1–3), runs once
 # ---------------------------------------------------------------------------
 
 def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
     """
-    Jalankan Step 1–3 sekali dan simpan hasilnya di experiments/_shared/.
-    Semua experiment akan memakai hasil yang sama, karena Step 1–3
-    tidak bergantung pada Echidna config sama sekali.
+    Execute Steps 1–3 once and store the results under experiments/_shared/.
+    All experiments reuse this output because Steps 1–3 are independent of
+    the Echidna configuration.
 
     Returns:
-        injection_logs (list) jika berhasil, None jika gagal.
+        The injection log (list of dicts) on success, or None on failure.
     """
     dirs = _shared_dirs()
     _ensure_dirs(dirs)
 
     log.info("")
     log.info("━" * 64)
-    log.info("  SHARED PREPARATION — Step 1–3")
-    log.info("  (Dijalankan sekali, dipakai semua experiment)")
+    log.info("  SHARED PREPARATION — Steps 1–3")
+    log.info("  (Runs once; output is reused by all experiments)")
     log.info("  Output : %s", SHARED_ROOT)
     log.info("━" * 64)
 
@@ -191,7 +193,7 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
                 output_dir=dirs["instrumented"],
             )
             if not any(results.values()):
-                log.error("Shared Step 1 gagal.")
+                log.error("Shared Step 1 failed.")
                 return None
         else:
             log.info("[Shared Step 1] Skipped")
@@ -204,7 +206,7 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
             compile_results = step2compiler.verify_instrumented_contracts(dirs["instrumented"])
             valid_files     = step2compiler.get_valid_contracts(compile_results)
             if not valid_files:
-                log.error("Shared Step 2 gagal: tidak ada contract yang valid.")
+                log.error("Shared Step 2 failed: no contracts passed compilation.")
                 return None
             with open(state_path, "w") as f:
                 json.dump({"valid_files": valid_files}, f, indent=2)
@@ -218,10 +220,10 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
                     fn for fn in os.listdir(dirs["instrumented"])
                     if fn.endswith(".sol")
                 ]
-            log.info("  %d valid files dimuat dari state", len(valid_files))
+            log.info("  %d valid files loaded from state", len(valid_files))
 
         # ── Step 3: Bug Injection ────────────────────────────────────────
-        inj_log_path = os.path.join(dirs["logs"], "injection_log.json")
+        injection_log_path = os.path.join(dirs["logs"], "injection_log.json")
 
         if from_step <= 3:
             log.info("[Shared Step 3] Bug Injection")
@@ -232,24 +234,24 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
                 variants=BUG_VARIANTS,
             )
             if not injection_logs:
-                log.error("Shared Step 3 gagal: tidak ada bug yang berhasil diinjeksi.")
+                log.error("Shared Step 3 failed: no bugs were successfully injected.")
                 return None
-            with open(inj_log_path, "w") as f:
+            with open(injection_log_path, "w") as f:
                 json.dump(injection_logs, f, indent=2)
         else:
             log.info("[Shared Step 3] Skipped")
-            if not os.path.isfile(inj_log_path):
+            if not os.path.isfile(injection_log_path):
                 log.error(
-                    "injection_log.json tidak ditemukan di %s. "
-                    "Jalankan ulang tanpa --from-step, atau dari step <= 3.",
-                    inj_log_path,
+                    "injection_log.json not found at %s. "
+                    "Re-run without --from-step, or start from step <= 3.",
+                    injection_log_path,
                 )
                 return None
-            with open(inj_log_path) as f:
+            with open(injection_log_path) as f:
                 injection_logs = json.load(f)
-            log.info("  %d injection entries dimuat dari disk", len(injection_logs))
+            log.info("  %d injection entries loaded from disk", len(injection_logs))
 
-        log.info("✓ Shared preparation selesai.")
+        log.info("✓ Shared preparation complete.")
         return injection_logs
 
     except Exception as exc:
@@ -265,7 +267,7 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# FASE 2 — Per-Experiment Runner (Step 4–5 saja)
+# Phase 2 — Per-Experiment Runner (Steps 4–5 only)
 # ---------------------------------------------------------------------------
 
 def run_single_experiment(
@@ -274,18 +276,18 @@ def run_single_experiment(
     from_step: int = 4,
 ) -> bool:
     """
-    Jalankan Step 4–5 untuk satu experiment.
+    Execute Steps 4–5 for one experiment.
 
-    Step 1–3 sudah selesai di run_shared_preparation() dan hasilnya
-    ada di experiments/_shared/injected_contracts/.
+    Steps 1–3 are already complete from run_shared_preparation(); their output
+    lives under experiments/_shared/injected_contracts/.
 
     Args:
-        exp_name       : Nama experiment (key di EXPERIMENT_MAP).
-        injection_logs : Hasil injection dari shared preparation.
-        from_step      : Step awal (minimal 4, karena 1–3 sudah shared).
+        exp_name       : Experiment name (key in EXPERIMENT_MAP).
+        injection_logs : Injection log produced by shared preparation.
+        from_step      : Starting step (minimum 4, since 1–3 are shared).
 
     Returns:
-        True jika experiment selesai tanpa error kritis.
+        True if the experiment completes without a critical error.
     """
     exp_cfg = EXPERIMENT_MAP.get(exp_name)
     if exp_cfg is None:
@@ -305,7 +307,7 @@ def run_single_experiment(
              exp_cfg["echidna_config"]["seqLen"],
              exp_cfg["echidna_config"]["timeout"])
     log.info("  Output dir : %s", dirs["root"])
-    log.info("  Injected contracts dari : %s", shared["injected"])
+    log.info("  Injected contracts from : %s", shared["injected"])
     log.info("━" * 64)
 
     snapshot = _patch_config(exp_cfg)
@@ -317,7 +319,7 @@ def run_single_experiment(
             importlib.reload(mod)
 
         # ── Step 4: Echidna Fuzzing ──────────────────────────────────────
-        er_path = os.path.join(dirs["logs"], "echidna_results.json")
+        echidna_results_path = os.path.join(dirs["logs"], "echidna_results.json")
 
         if from_step <= 4:
             log.info("[Step 4] Echidna Fuzzing (timeout=%ds per contract)",
@@ -327,7 +329,7 @@ def run_single_experiment(
                 results_dir=dirs["echidna"],
                 injection_log=injection_logs,
             )
-            with open(er_path, "w") as f:
+            with open(echidna_results_path, "w") as f:
                 json.dump([r.to_dict() for r in echidna_results], f, indent=2)
         else:
             log.info("[Step 4] Skipped")
@@ -336,7 +338,7 @@ def run_single_experiment(
         if from_step <= 5:
             log.info("[Step 5] Results Analysis")
             step5analyst.run_analysis(
-                echidna_results_json=er_path,
+                echidna_results_json=echidna_results_path,
                 injection_log_json=os.path.join(shared["logs"], "injection_log.json"),
                 output_dir=dirs["analysis"],
             )
@@ -348,7 +350,7 @@ def run_single_experiment(
                 "completed_at": datetime.now().isoformat(),
             }, f, indent=2)
 
-        log.info("✓ Experiment '%s' selesai.", exp_name)
+        log.info("✓ Experiment '%s' complete.", exp_name)
         return True
 
     except Exception as exc:
@@ -377,20 +379,21 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
     log.info("━" * 64)
 
     all_exp_data: List[Dict[str, Any]] = []
+
     for exp_name in exp_names:
         exp_cfg = EXPERIMENT_MAP.get(exp_name)
         if exp_cfg is None:
             log.warning("Skipping unknown experiment: %s", exp_name)
             continue
 
-        dirs    = _exp_dirs(exp_name)
-        er_path = os.path.join(dirs["logs"], "echidna_results.json")
+        dirs                 = _exp_dirs(exp_name)
+        echidna_results_path = os.path.join(dirs["logs"], "echidna_results.json")
 
-        if not os.path.isfile(er_path):
-            log.warning("Results tidak ditemukan untuk '%s' — skipping.", exp_name)
+        if not os.path.isfile(echidna_results_path):
+            log.warning("Results not found for '%s' — skipping.", exp_name)
             continue
 
-        with open(er_path) as f:
+        with open(echidna_results_path) as f:
             echidna_results = json.load(f)
 
         import step5analyst
@@ -408,7 +411,7 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
         log.info("  Loaded: %-20s  (%d results)", exp_name, len(echidna_results))
 
     if len(all_exp_data) < 2:
-        log.error("Butuh minimal 2 experiment selesai untuk comparison. Found: %d",
+        log.error("At least 2 completed experiments are required for comparison. Found: %d",
                   len(all_exp_data))
         return
 
@@ -441,26 +444,26 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
                     continue
                 writer.writerow({
                     "experiment":             exp["name"],
-                    "label":                 exp["label"],
-                    "testLimit":             exp["echidna_config"]["testLimit"],
-                    "seqLen":                exp["echidna_config"]["seqLen"],
-                    "timeout_config":        exp["echidna_config"]["timeout"],
-                    "timeout_process":       exp["echidna_timeout"],
-                    "variant":               variant,
-                    "total_injected":        m.get("total_injected", 0),
-                    "total_detected":        m.get("total_detected", 0),
-                    "total_activated":       m.get("total_activated", 0),
-                    "detection_rate_pct":    m.get("detection_rate_pct", "0.00%"),
-                    "activation_rate_pct":   m.get("activation_rate_pct", "0.00%"),
+                    "label":                  exp["label"],
+                    "testLimit":              exp["echidna_config"]["testLimit"],
+                    "seqLen":                 exp["echidna_config"]["seqLen"],
+                    "timeout_config":         exp["echidna_config"]["timeout"],
+                    "timeout_process":        exp["echidna_timeout"],
+                    "variant":                variant,
+                    "total_injected":         m.get("total_injected", 0),
+                    "total_detected":         m.get("total_detected", 0),
+                    "total_activated":        m.get("total_activated", 0),
+                    "detection_rate_pct":     m.get("detection_rate_pct", "0.00%"),
+                    "activation_rate_pct":    m.get("activation_rate_pct", "0.00%"),
                     "avg_detection_time_sec": m.get("avg_detection_time_sec", -1),
-                    "total_timeout":         m.get("total_timeout", 0),
-                    "total_error":           m.get("total_error", 0),
+                    "total_timeout":          m.get("total_timeout", 0),
+                    "total_error":            m.get("total_error", 0),
                 })
     log.info("Comparison CSV  : %s", csv_path)
 
     # ── Generate charts ──────────────────────────────────────────────────
     _generate_comparison_charts(all_exp_data, comparison_dir, ts)
-    log.info("Comparison selesai → %s", comparison_dir)
+    log.info("Comparison complete → %s", comparison_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -473,11 +476,11 @@ def _generate_comparison_charts(
     timestamp: str,
 ) -> None:
     """
-    Generate 4 comparison charts:
-        1. Detection Rate grouped bar  (variant × experiment)
-        2. Activation Rate grouped bar (variant × experiment)
-        3. ECDF of detection time      (cumulative % detected by time T)
-        4. Avg detection time          (horizontal grouped bar, per experiment & variant)
+    Generate four comparison charts:
+        1. Detection Rate  — grouped bar chart (variant × experiment)
+        2. Activation Rate — grouped bar chart (variant × experiment)
+        3. ECDF of detection time — cumulative % detected by time T
+        4. Avg detection time — horizontal grouped bar (experiment × variant)
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -501,7 +504,7 @@ def _generate_comparison_charts(
     n_exp  = len(all_exp_data)
     labels = [e["label"] for e in all_exp_data]
 
-    def _dark(fig, axes):
+    def _apply_dark(fig, axes):
         fig.patch.set_facecolor(BG_FIG)
         ax_list = axes if hasattr(axes, "__iter__") else [axes]
         for ax in ax_list:
@@ -517,18 +520,18 @@ def _generate_comparison_charts(
         log.info("  ✓ %s", name)
 
     x       = np.arange(len(VARIANTS))
-    w       = 0.22
-    offsets = np.linspace(-(n_exp - 1) * w / 2, (n_exp - 1) * w / 2, n_exp)
+    bar_w   = 0.22
+    offsets = np.linspace(-(n_exp - 1) * bar_w / 2, (n_exp - 1) * bar_w / 2, n_exp)
 
-    # ── Chart 1: Detection Rate grouped bar ─────────────────────────────
+    # ── Chart 1: Detection Rate ──────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
-    _dark(fig, ax)
+    _apply_dark(fig, ax)
     for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
         vals = [
             exp["metrics"].get(v, {}).get("detection_rate", 0) * 100
             for v in VARIANTS
         ]
-        bars = ax.bar(x + offsets[i], vals, w, color=color, label=exp["label"], zorder=3)
+        bars = ax.bar(x + offsets[i], vals, bar_w, color=color, label=exp["label"], zorder=3)
         for b in bars:
             h = b.get_height()
             if h > 0:
@@ -546,15 +549,15 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart1_detection_rate.png")
 
-    # ── Chart 2: Activation Rate grouped bar ────────────────────────────
+    # ── Chart 2: Activation Rate ─────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
-    _dark(fig, ax)
+    _apply_dark(fig, ax)
     for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
         vals = [
             exp["metrics"].get(v, {}).get("activation_rate", 0) * 100
             for v in VARIANTS
         ]
-        bars = ax.bar(x + offsets[i], vals, w, color=color, label=exp["label"], zorder=3)
+        bars = ax.bar(x + offsets[i], vals, bar_w, color=color, label=exp["label"], zorder=3)
         for b in bars:
             h = b.get_height()
             if h > 0:
@@ -577,16 +580,15 @@ def _generate_comparison_charts(
     # x-axis : time in seconds (0 → ECHIDNA_TIMEOUT)
     # y-axis : cumulative % of total injected bugs detected by time T
     #
-    # Setiap kurva = kombinasi experiment × variant.
-    # Warna  = experiment (biru/oranye/hijau)
-    # Style  = variant    (solid = single_function, dashed = cross_function)
+    # Each curve represents one experiment × variant combination.
+    # Color  = experiment  (blue / orange / green)
+    # Style  = variant     (solid = single_function, dashed = cross_function)
     #
-    # Pendekatan ECDF dipilih karena kontrak yang terdeteksi berbeda-beda
-    # di setiap experiment — x-axis berbasis WAKTU, bukan nomor kontrak,
-    # sehingga ketiga kurva bisa dibandingkan pada sumbu yang sama.
+    # ECDF is used here because detected contracts differ across experiments —
+    # a time-based x-axis lets all three curves share the same scale.
 
     fig, ax = plt.subplots(figsize=(11, 5))
-    _dark(fig, ax)
+    _apply_dark(fig, ax)
 
     variant_styles = {
         VARIANTS[0]: {"linestyle": "-",  "label_suffix": "single fn"},
@@ -594,11 +596,10 @@ def _generate_comparison_charts(
     }
 
     for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
-        raw_results   = exp["raw_results"]
-        total_per_var = exp["metrics"].get(VARIANTS[0], {}).get("total_injected", 1) or 1
+        raw_results = exp["raw_results"]
 
         for variant, vstyle in variant_styles.items():
-            # Kumpulkan waktu deteksi yang valid (> 0) untuk variant ini
+            # Collect valid detection times (> 0) for this variant
             det_times = sorted([
                 r["detection_time_sec"]
                 for r in raw_results
@@ -609,14 +610,13 @@ def _generate_comparison_charts(
 
             total_injected = exp["metrics"].get(variant, {}).get("total_injected", 1) or 1
 
-            # Bangun titik ECDF: step function
-            # Mulai di (0, 0), naik setiap kali satu bug terdeteksi
+            # Build ECDF step function: start at (0, 0), step up on each detection
             ecdf_x = [0.0]
             ecdf_y = [0.0]
             for j, t in enumerate(det_times):
                 ecdf_x.append(t)
                 ecdf_y.append((j + 1) / total_injected * 100)
-            # Tambahkan titik akhir di timeout agar kurva memanjang sampai batas
+            # Extend to timeout so the curve reaches the full x range
             ecdf_x.append(float(ECHIDNA_TIMEOUT))
             ecdf_y.append(len(det_times) / total_injected * 100)
 
@@ -631,17 +631,15 @@ def _generate_comparison_charts(
                 alpha=0.9,
             )
 
-    # Garis timeout sebagai referensi
     ax.axvline(
         x=ECHIDNA_TIMEOUT, color="#e74c3c",
         linewidth=1.0, linestyle=":", alpha=0.7,
         label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
     )
-
     ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
     ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
     ax.set_title(
-        "ECDF — Cumulative Detection Rate over Time\n"
+        "ECDF (Cumulative Detection Rate over Time)\n"
         "(solid = single function, dashed = cross function)",
         color="white", fontsize=12, pad=12,
     )
@@ -649,45 +647,33 @@ def _generate_comparison_charts(
     ax.set_ylim(0, 105)
     ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
     ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-
-    # Legend: 2 kolom agar tidak terlalu panjang
-    ax.legend(
-        facecolor=BG_LEGEND, labelcolor="white", fontsize=8,
-        loc="lower right", ncol=2,
-    )
+    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=8, loc="lower right", ncol=2)
     plt.tight_layout()
     _save(fig, "cmp_chart3_ecdf_detection_time.png")
 
-    # ── Chart 4: Avg detection time — horizontal grouped bar ─────────────
+    # ── Chart 4: Average detection time — horizontal grouped bar ─────────
     #
-    # Setiap experiment punya 2 bar (satu per variant), dikelompokkan
-    # secara horizontal. Semakin pendek bar = fuzzer semakin cepat detect.
-    # Bar diberi nilai label agar mudah dibandingkan.
+    # Each experiment has two bars (one per variant) grouped horizontally.
+    # Shorter bars indicate faster detection.
 
-    n_variants = len(VARIANTS)
-    bar_h      = 0.25
-    # Posisi y untuk setiap experiment: jarak antar group = 1.0
-    y_base     = np.arange(n_exp)
-
-    # Offset per variant agar bar dalam satu group tidak overlap
+    n_variants  = len(VARIANTS)
+    bar_h       = 0.25
+    y_base      = np.arange(n_exp)
     var_offsets = np.linspace(
         -(n_variants - 1) * bar_h / 2,
          (n_variants - 1) * bar_h / 2,
         n_variants,
     )
-
-    # Warna per variant (berbeda dari warna experiment)
-    VARIANT_COLORS = ["#a8c4e0", "#f5c08a"]   # biru muda, oranye muda
+    VARIANT_COLORS = ["#a8c4e0", "#f5c08a"]
 
     fig, ax = plt.subplots(figsize=(10, max(4, n_exp * 1.6)))
-    _dark(fig, ax)
+    _apply_dark(fig, ax)
 
     for vi, (variant, vcolor) in enumerate(zip(VARIANTS, VARIANT_COLORS)):
         avg_times = []
         for exp in all_exp_data:
             t = exp["metrics"].get(variant, {}).get("avg_detection_time_sec", -1)
-            # Jika -1 (tidak ada deteksi), tampilkan sebagai 0 agar tidak misleading
-            avg_times.append(max(t, 0))
+            avg_times.append(max(t, 0))   # show 0 instead of -1 when no detection occurred
 
         y_positions = y_base + var_offsets[vi]
         bars = ax.barh(
@@ -699,7 +685,6 @@ def _generate_comparison_charts(
             edgecolor=SPINE,
             linewidth=0.5,
         )
-
         for bar, val in zip(bars, avg_times):
             if val > 0:
                 ax.text(
@@ -719,22 +704,16 @@ def _generate_comparison_charts(
         color="white", fontsize=12, pad=12,
     )
     ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-
-    # Garis timeout referensi
     ax.axvline(
         x=ECHIDNA_TIMEOUT, color="#e74c3c",
         linewidth=1.0, linestyle=":", alpha=0.7,
         label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
     )
-
-    ax.legend(
-        facecolor=BG_LEGEND, labelcolor="white", fontsize=9,
-        loc="lower right",
-    )
+    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
     plt.tight_layout()
     _save(fig, "cmp_chart4_avg_detection_time.png")
 
-    log.info("Semua comparison charts tersimpan → %s", charts_dir)
+    log.info("All comparison charts saved → %s", charts_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -747,11 +726,11 @@ def _check_prereqs() -> bool:
 
     issues = []
     if not os.path.isdir(cfg.BASE_CONTRACTS_DIR):
-        issues.append(f"Contracts dir tidak ditemukan: {cfg.BASE_CONTRACTS_DIR}")
+        issues.append(f"Contracts directory not found: {cfg.BASE_CONTRACTS_DIR}")
     try:
         subprocess.run(["solc", "--version"], capture_output=True, timeout=5)
     except FileNotFoundError:
-        issues.append("solc tidak ditemukan.")
+        issues.append("solc not found.")
 
     if issues:
         for issue in issues:
@@ -783,17 +762,17 @@ Examples:
   python run_experiments.py                         # Run all 3 experiments
   python run_experiments.py --exp exp1_light        # Run one experiment only
   python run_experiments.py --compare-only          # Compare existing results
-  python run_experiments.py --from-step 4           # Resume semua dari step 4
+  python run_experiments.py --from-step 4           # Resume all experiments from step 4
   python run_experiments.py --list                  # List available experiments
         """,
     )
-    parser.add_argument("--exp",          type=str,  help="Run satu named experiment")
+    parser.add_argument("--exp",          type=str,  help="Run a single named experiment")
     parser.add_argument("--from-step",    type=int,  default=1, choices=range(1, 6), metavar="N",
-                        help="Mulai dari step N (1–5)")
+                        help="Start from step N (1–5)")
     parser.add_argument("--compare-only", action="store_true",
-                        help="Skip experiment runs; hanya generate comparison charts")
+                        help="Skip experiment runs; generate comparison charts only")
     parser.add_argument("--list",         action="store_true",
-                        help="List available experiments dan exit")
+                        help="List available experiments and exit")
     parser.add_argument("--verbose",      action="store_true", help="Enable DEBUG logging")
     args = parser.parse_args()
 
@@ -815,20 +794,19 @@ Examples:
         sys.exit(0)
 
     if not _check_prereqs():
-        log.error("Prerequisites tidak terpenuhi. Aborting.")
+        log.error("Prerequisites not met. Aborting.")
         sys.exit(1)
 
     exps_to_run = [args.exp] if args.exp else [e["name"] for e in EXPERIMENTS]
     log.info("Experiments to run: %s", exps_to_run)
 
-    # ── FASE 1: Shared Preparation (Step 1–3) — dijalankan SEKALI ────────
-    shared_step    = args.from_step
-    injection_logs = run_shared_preparation(from_step=shared_step)
+    # ── Phase 1: Shared Preparation (Steps 1–3) — runs once ──────────────
+    injection_logs = run_shared_preparation(from_step=args.from_step)
     if injection_logs is None:
-        log.error("Shared preparation gagal. Aborting.")
+        log.error("Shared preparation failed. Aborting.")
         sys.exit(1)
 
-    # ── FASE 2: Per-Experiment Fuzzing (Step 4–5) ─────────────────────────
+    # ── Phase 2: Per-Experiment Fuzzing (Steps 4–5) ───────────────────────
     exp_from_step = max(args.from_step, 4)
 
     results_summary: Dict[str, bool] = {}
@@ -849,9 +827,9 @@ Examples:
     if len(completed) >= 2:
         run_comparison(completed)
     elif len(completed) == 1:
-        log.warning("Hanya 1 experiment selesai — comparison butuh minimal 2.")
+        log.warning("Only 1 experiment completed — comparison requires at least 2.")
     else:
-        log.error("Tidak ada experiment yang berhasil.")
+        log.error("No experiments completed successfully.")
 
     # ── Final Summary ─────────────────────────────────────────────────────
     total_elapsed = time.time() - start_total
