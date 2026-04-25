@@ -234,9 +234,11 @@ def _create_echidna_wrapper(
     wrapper_fname = f"{os.path.basename(contract_path).replace('.sol', '')}_wrapper.sol"
     wrapper_path  = os.path.join(result_dir, wrapper_fname)
 
+    contract_abs_path = os.path.abspath(contract_path)
+
     wrapper_code = f"""// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-import "../../injected_contracts/{os.path.basename(contract_path)}";
+import "{contract_abs_path}";
 
 // Attacker contract — triggers reentrancy via the receive() fallback
 contract EchidnaAttacker_{contract_name} {{
