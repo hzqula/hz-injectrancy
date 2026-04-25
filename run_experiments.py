@@ -34,6 +34,10 @@ Output structure:
         ├── comparison_report.json
         ├── comparison_metrics.csv
         └── charts_*/
+            ├── cmp_chart1_detection_rate.png
+            ├── cmp_chart2_activation_rate.png
+            ├── cmp_chart3_ecdf_detection_time.png
+            └── cmp_chart4_avg_detection_time.png
 """
 
 import argparse
@@ -98,13 +102,13 @@ def _patch_config(exp_cfg: Dict[str, Any]) -> Dict[str, Any]:
     import config as cfg
 
     snapshot = {
-        "ECHIDNA_CONFIG":     dict(cfg.ECHIDNA_CONFIG),
-        "ECHIDNA_TIMEOUT":    cfg.ECHIDNA_TIMEOUT,
-        "INSTRUMENTED_DIR":   cfg.INSTRUMENTED_DIR,
-        "INJECTED_DIR":       cfg.INJECTED_DIR,
+        "ECHIDNA_CONFIG":      dict(cfg.ECHIDNA_CONFIG),
+        "ECHIDNA_TIMEOUT":     cfg.ECHIDNA_TIMEOUT,
+        "INSTRUMENTED_DIR":    cfg.INSTRUMENTED_DIR,
+        "INJECTED_DIR":        cfg.INJECTED_DIR,
         "ECHIDNA_RESULTS_DIR": cfg.ECHIDNA_RESULTS_DIR,
         "ANALYSIS_RESULTS_DIR": cfg.ANALYSIS_RESULTS_DIR,
-        "LOGS_DIR":           cfg.LOGS_DIR,
+        "LOGS_DIR":            cfg.LOGS_DIR,
     }
 
     dirs   = _exp_dirs(exp_cfg["name"])
@@ -165,7 +169,6 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
     import config as cfg
     import step1instrumentor, step2compiler, step3injector
 
-    # Patch hanya path direktori yang relevan untuk step 1–3
     orig_instrumented = cfg.INSTRUMENTED_DIR
     orig_injected     = cfg.INJECTED_DIR
     orig_logs         = cfg.LOGS_DIR
@@ -254,7 +257,6 @@ def run_shared_preparation(from_step: int = 1) -> Optional[List[dict]]:
         return None
 
     finally:
-        # Kembalikan config seperti semula
         cfg.INSTRUMENTED_DIR = orig_instrumented
         cfg.INJECTED_DIR     = orig_injected
         cfg.LOGS_DIR         = orig_logs
@@ -291,10 +293,9 @@ def run_single_experiment(
                   exp_name, list(EXPERIMENT_MAP.keys()))
         return False
 
-    dirs = _exp_dirs(exp_name)
-    _ensure_dirs(dirs)
-
+    dirs   = _exp_dirs(exp_name)
     shared = _shared_dirs()
+    _ensure_dirs(dirs)
 
     log.info("")
     log.info("━" * 64)
@@ -322,7 +323,7 @@ def run_single_experiment(
             log.info("[Step 4] Echidna Fuzzing (timeout=%ds per contract)",
                      exp_cfg["echidna_timeout"])
             echidna_results = step4echidna.run_echidna_all(
-                injected_dir=shared["injected"],   # ← pakai shared injected dir
+                injected_dir=shared["injected"],
                 results_dir=dirs["echidna"],
                 injection_log=injection_logs,
             )
@@ -340,7 +341,6 @@ def run_single_experiment(
                 output_dir=dirs["analysis"],
             )
 
-        # Simpan state experiment
         state_path = os.path.join(dirs["logs"], "pipeline_state.json")
         with open(state_path, "w") as f:
             json.dump({
@@ -360,7 +360,7 @@ def run_single_experiment(
 
 
 # ---------------------------------------------------------------------------
-# Comparative analysis (Step 6) — tidak berubah
+# Comparative analysis (Step 6)
 # ---------------------------------------------------------------------------
 
 def run_comparison(exp_names: Optional[List[str]] = None) -> None:
@@ -412,6 +412,7 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
                   len(all_exp_data))
         return
 
+    # ── Export JSON ──────────────────────────────────────────────────────
     ts          = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = os.path.join(comparison_dir, f"comparison_report_{ts}.json")
     with open(report_path, "w") as f:
@@ -419,6 +420,7 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
                    "experiments": all_exp_data}, f, indent=2, ensure_ascii=False)
     log.info("Comparison JSON : %s", report_path)
 
+    # ── Export CSV ───────────────────────────────────────────────────────
     import csv
     csv_path   = os.path.join(comparison_dir, f"comparison_metrics_{ts}.csv")
     fieldnames = [
@@ -438,30 +440,31 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
                 if m.get("total_injected", 0) == 0:
                     continue
                 writer.writerow({
-                    "experiment":           exp["name"],
-                    "label":               exp["label"],
-                    "testLimit":           exp["echidna_config"]["testLimit"],
-                    "seqLen":              exp["echidna_config"]["seqLen"],
-                    "timeout_config":      exp["echidna_config"]["timeout"],
-                    "timeout_process":     exp["echidna_timeout"],
-                    "variant":             variant,
-                    "total_injected":      m.get("total_injected", 0),
-                    "total_detected":      m.get("total_detected", 0),
-                    "total_activated":     m.get("total_activated", 0),
-                    "detection_rate_pct":  m.get("detection_rate_pct", "0.00%"),
-                    "activation_rate_pct": m.get("activation_rate_pct", "0.00%"),
+                    "experiment":             exp["name"],
+                    "label":                 exp["label"],
+                    "testLimit":             exp["echidna_config"]["testLimit"],
+                    "seqLen":                exp["echidna_config"]["seqLen"],
+                    "timeout_config":        exp["echidna_config"]["timeout"],
+                    "timeout_process":       exp["echidna_timeout"],
+                    "variant":               variant,
+                    "total_injected":        m.get("total_injected", 0),
+                    "total_detected":        m.get("total_detected", 0),
+                    "total_activated":       m.get("total_activated", 0),
+                    "detection_rate_pct":    m.get("detection_rate_pct", "0.00%"),
+                    "activation_rate_pct":   m.get("activation_rate_pct", "0.00%"),
                     "avg_detection_time_sec": m.get("avg_detection_time_sec", -1),
-                    "total_timeout":       m.get("total_timeout", 0),
-                    "total_error":         m.get("total_error", 0),
+                    "total_timeout":         m.get("total_timeout", 0),
+                    "total_error":           m.get("total_error", 0),
                 })
     log.info("Comparison CSV  : %s", csv_path)
 
+    # ── Generate charts ──────────────────────────────────────────────────
     _generate_comparison_charts(all_exp_data, comparison_dir, ts)
     log.info("Comparison selesai → %s", comparison_dir)
 
 
 # ---------------------------------------------------------------------------
-# Comparison chart generator — tidak berubah dari versi asli
+# Comparison chart generator — 4 charts
 # ---------------------------------------------------------------------------
 
 def _generate_comparison_charts(
@@ -469,7 +472,13 @@ def _generate_comparison_charts(
     output_dir: str,
     timestamp: str,
 ) -> None:
-    import math
+    """
+    Generate 4 comparison charts:
+        1. Detection Rate grouped bar  (variant × experiment)
+        2. Activation Rate grouped bar (variant × experiment)
+        3. ECDF of detection time      (cumulative % detected by time T)
+        4. Avg detection time          (horizontal grouped bar, per experiment & variant)
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -478,21 +487,24 @@ def _generate_comparison_charts(
     charts_dir = os.path.join(output_dir, f"charts_{timestamp}")
     os.makedirs(charts_dir, exist_ok=True)
 
-    BG_FIG    = "#0f1117"
-    BG_AXES   = "#1a1d27"
-    BG_LEGEND = "#2a2d3e"
-    GRID      = "#2d3142"
-    SPINE     = "#3a3f52"
+    # ── Visual constants ─────────────────────────────────────────────────
+    BG_FIG     = "#0f1117"
+    BG_AXES    = "#1a1d27"
+    BG_LEGEND  = "#2a2d3e"
+    GRID       = "#2d3142"
+    SPINE      = "#3a3f52"
     EXP_COLORS = ["#4C72B0", "#DD8452", "#55A868"]
 
     from config import BUG_VARIANTS as VARIANTS
+    from config import ECHIDNA_TIMEOUT
 
-    labels  = [e["label"] for e in all_exp_data]
-    n_exp   = len(all_exp_data)
+    n_exp  = len(all_exp_data)
+    labels = [e["label"] for e in all_exp_data]
 
     def _dark(fig, axes):
         fig.patch.set_facecolor(BG_FIG)
-        for ax in (axes if hasattr(axes, "__iter__") else [axes]):
+        ax_list = axes if hasattr(axes, "__iter__") else [axes]
+        for ax in ax_list:
             ax.set_facecolor(BG_AXES)
             ax.tick_params(colors="white")
             for sp in ax.spines.values():
@@ -508,17 +520,22 @@ def _generate_comparison_charts(
     w       = 0.22
     offsets = np.linspace(-(n_exp - 1) * w / 2, (n_exp - 1) * w / 2, n_exp)
 
-    # Chart 1
+    # ── Chart 1: Detection Rate grouped bar ─────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     _dark(fig, ax)
     for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
-        vals = [exp["metrics"].get(v, {}).get("detection_rate", 0) * 100 for v in VARIANTS]
+        vals = [
+            exp["metrics"].get(v, {}).get("detection_rate", 0) * 100
+            for v in VARIANTS
+        ]
         bars = ax.bar(x + offsets[i], vals, w, color=color, label=exp["label"], zorder=3)
         for b in bars:
             h = b.get_height()
             if h > 0:
-                ax.text(b.get_x() + b.get_width() / 2, h + 0.5,
-                        f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white")
+                ax.text(
+                    b.get_x() + b.get_width() / 2, h + 0.5,
+                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white",
+                )
     ax.set_xticks(x)
     ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="white")
     ax.set_ylabel("Detection Rate (%)", color="white")
@@ -529,17 +546,22 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart1_detection_rate.png")
 
-    # Chart 2
+    # ── Chart 2: Activation Rate grouped bar ────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     _dark(fig, ax)
     for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
-        vals = [exp["metrics"].get(v, {}).get("activation_rate", 0) * 100 for v in VARIANTS]
+        vals = [
+            exp["metrics"].get(v, {}).get("activation_rate", 0) * 100
+            for v in VARIANTS
+        ]
         bars = ax.bar(x + offsets[i], vals, w, color=color, label=exp["label"], zorder=3)
         for b in bars:
             h = b.get_height()
             if h > 0:
-                ax.text(b.get_x() + b.get_width() / 2, h + 0.5,
-                        f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white")
+                ax.text(
+                    b.get_x() + b.get_width() / 2, h + 0.5,
+                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white",
+                )
     ax.set_xticks(x)
     ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="white")
     ax.set_ylabel("Activation Rate (%)", color="white")
@@ -550,87 +572,167 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart2_activation_rate.png")
 
-    # Chart 3
-    fig, ax = plt.subplots(figsize=(8, 5))
+    # ── Chart 3: ECDF of detection time ─────────────────────────────────
+    #
+    # x-axis : time in seconds (0 → ECHIDNA_TIMEOUT)
+    # y-axis : cumulative % of total injected bugs detected by time T
+    #
+    # Setiap kurva = kombinasi experiment × variant.
+    # Warna  = experiment (biru/oranye/hijau)
+    # Style  = variant    (solid = single_function, dashed = cross_function)
+    #
+    # Pendekatan ECDF dipilih karena kontrak yang terdeteksi berbeda-beda
+    # di setiap experiment — x-axis berbasis WAKTU, bukan nomor kontrak,
+    # sehingga ketiga kurva bisa dibandingkan pada sumbu yang sama.
+
+    fig, ax = plt.subplots(figsize=(11, 5))
     _dark(fig, ax)
-    y_pos = np.arange(n_exp)
-    vals  = [exp["metrics"].get("overall", {}).get("avg_detection_time_sec", -1)
-             for exp in all_exp_data]
-    bars = ax.barh(y_pos, vals, color=EXP_COLORS[:n_exp], zorder=3, height=0.5)
-    for bar, v in zip(bars, vals):
-        ax.text(v + 1, bar.get_y() + bar.get_height() / 2,
-                f"{v:.1f}s", va="center", ha="left", fontsize=9, color="white")
-    ax.set_yticks(y_pos)
+
+    variant_styles = {
+        VARIANTS[0]: {"linestyle": "-",  "label_suffix": "single fn"},
+        VARIANTS[1]: {"linestyle": "--", "label_suffix": "cross fn"},
+    }
+
+    for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
+        raw_results   = exp["raw_results"]
+        total_per_var = exp["metrics"].get(VARIANTS[0], {}).get("total_injected", 1) or 1
+
+        for variant, vstyle in variant_styles.items():
+            # Kumpulkan waktu deteksi yang valid (> 0) untuk variant ini
+            det_times = sorted([
+                r["detection_time_sec"]
+                for r in raw_results
+                if r.get("variant") == variant
+                and r.get("property_broken")
+                and r.get("detection_time_sec", -1) > 0
+            ])
+
+            total_injected = exp["metrics"].get(variant, {}).get("total_injected", 1) or 1
+
+            # Bangun titik ECDF: step function
+            # Mulai di (0, 0), naik setiap kali satu bug terdeteksi
+            ecdf_x = [0.0]
+            ecdf_y = [0.0]
+            for j, t in enumerate(det_times):
+                ecdf_x.append(t)
+                ecdf_y.append((j + 1) / total_injected * 100)
+            # Tambahkan titik akhir di timeout agar kurva memanjang sampai batas
+            ecdf_x.append(float(ECHIDNA_TIMEOUT))
+            ecdf_y.append(len(det_times) / total_injected * 100)
+
+            label = f"{exp['label']} — {vstyle['label_suffix']}"
+            ax.step(
+                ecdf_x, ecdf_y,
+                where="post",
+                color=color,
+                linestyle=vstyle["linestyle"],
+                linewidth=1.8,
+                label=label,
+                alpha=0.9,
+            )
+
+    # Garis timeout sebagai referensi
+    ax.axvline(
+        x=ECHIDNA_TIMEOUT, color="#e74c3c",
+        linewidth=1.0, linestyle=":", alpha=0.7,
+        label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
+    )
+
+    ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
+    ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
+    ax.set_title(
+        "ECDF — Cumulative Detection Rate over Time\n"
+        "(solid = single function, dashed = cross function)",
+        color="white", fontsize=12, pad=12,
+    )
+    ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
+    ax.set_ylim(0, 105)
+    ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
+    ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
+
+    # Legend: 2 kolom agar tidak terlalu panjang
+    ax.legend(
+        facecolor=BG_LEGEND, labelcolor="white", fontsize=8,
+        loc="lower right", ncol=2,
+    )
+    plt.tight_layout()
+    _save(fig, "cmp_chart3_ecdf_detection_time.png")
+
+    # ── Chart 4: Avg detection time — horizontal grouped bar ─────────────
+    #
+    # Setiap experiment punya 2 bar (satu per variant), dikelompokkan
+    # secara horizontal. Semakin pendek bar = fuzzer semakin cepat detect.
+    # Bar diberi nilai label agar mudah dibandingkan.
+
+    n_variants = len(VARIANTS)
+    bar_h      = 0.25
+    # Posisi y untuk setiap experiment: jarak antar group = 1.0
+    y_base     = np.arange(n_exp)
+
+    # Offset per variant agar bar dalam satu group tidak overlap
+    var_offsets = np.linspace(
+        -(n_variants - 1) * bar_h / 2,
+         (n_variants - 1) * bar_h / 2,
+        n_variants,
+    )
+
+    # Warna per variant (berbeda dari warna experiment)
+    VARIANT_COLORS = ["#a8c4e0", "#f5c08a"]   # biru muda, oranye muda
+
+    fig, ax = plt.subplots(figsize=(10, max(4, n_exp * 1.6)))
+    _dark(fig, ax)
+
+    for vi, (variant, vcolor) in enumerate(zip(VARIANTS, VARIANT_COLORS)):
+        avg_times = []
+        for exp in all_exp_data:
+            t = exp["metrics"].get(variant, {}).get("avg_detection_time_sec", -1)
+            # Jika -1 (tidak ada deteksi), tampilkan sebagai 0 agar tidak misleading
+            avg_times.append(max(t, 0))
+
+        y_positions = y_base + var_offsets[vi]
+        bars = ax.barh(
+            y_positions, avg_times,
+            height=bar_h,
+            color=vcolor,
+            label=variant.replace("_", " ").title(),
+            zorder=3,
+            edgecolor=SPINE,
+            linewidth=0.5,
+        )
+
+        for bar, val in zip(bars, avg_times):
+            if val > 0:
+                ax.text(
+                    val + ECHIDNA_TIMEOUT * 0.01,
+                    bar.get_y() + bar.get_height() / 2,
+                    f"{val:.1f}s",
+                    va="center", ha="left", fontsize=8, color="white",
+                )
+
+    ax.set_yticks(y_base)
     ax.set_yticklabels(labels, color="white", fontsize=10)
-    ax.set_xlabel("Avg Detection Time (s)", color="white")
-    ax.set_title("Average Detection Time per Experiment (Overall)",
-                 color="white", fontsize=13, pad=12)
-    ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.6, zorder=0)
-    plt.tight_layout()
-    _save(fig, "cmp_chart3_detection_time.png")
+    ax.set_xlabel("Average detection time (s)", color="white", fontsize=10)
+    ax.set_xlim(0, ECHIDNA_TIMEOUT * 1.15)
+    ax.set_title(
+        "Average Detection Time per Experiment & Variant\n"
+        "(lower = faster detection)",
+        color="white", fontsize=12, pad=12,
+    )
+    ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
 
-    # Chart 4
-    fig, ax = plt.subplots(figsize=(9, 4))
-    _dark(fig, ax)
-    matrix = np.array([
-        [exp["metrics"].get(v, {}).get("detection_rate", 0) * 100 for v in VARIANTS]
-        for exp in all_exp_data
-    ])
-    im   = ax.imshow(matrix, cmap="RdYlGn", vmin=0, vmax=100, aspect="auto")
-    cbar = fig.colorbar(im, ax=ax, pad=0.02)
-    cbar.ax.yaxis.set_tick_params(color="white")
-    plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
-    cbar.set_label("Detection Rate (%)", color="white")
-    ax.set_xticks(range(len(VARIANTS)))
-    ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS],
-                       color="white", fontsize=9)
-    ax.set_yticks(range(n_exp))
-    ax.set_yticklabels(labels, color="white", fontsize=9)
-    ax.set_title("Detection Rate Heatmap (Experiment × Variant)",
-                 color="white", fontsize=13, pad=12)
-    for i in range(n_exp):
-        for j in range(len(VARIANTS)):
-            ax.text(j, i, f"{matrix[i, j]:.0f}%", ha="center", va="center",
-                    color="black" if matrix[i, j] > 50 else "white",
-                    fontsize=10, fontweight="bold")
-    plt.tight_layout()
-    _save(fig, "cmp_chart4_status_heatmap.png")
+    # Garis timeout referensi
+    ax.axvline(
+        x=ECHIDNA_TIMEOUT, color="#e74c3c",
+        linewidth=1.0, linestyle=":", alpha=0.7,
+        label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
+    )
 
-    # Chart 5
-    import math as _math
-    cats   = ["Detection\nRate", "Activation\nRate", "Reachable\nRatio",
-              "Timeout\nRatio", "Error Ratio"]
-    n_cats = len(cats)
-    angles = [n / n_cats * 2 * _math.pi for n in range(n_cats)] + [0]
-    fig, ax = plt.subplots(figsize=(6.5, 6.5), subplot_kw=dict(polar=True))
-    fig.patch.set_facecolor(BG_FIG)
-    ax.set_facecolor(BG_AXES)
-    for exp, color in zip(all_exp_data, EXP_COLORS):
-        ov    = exp["metrics"].get("overall", {})
-        total = ov.get("total_injected", 1) or 1
-        vals  = [
-            ov.get("detection_rate", 0),
-            ov.get("activation_rate", 0),
-            ov.get("total_reachable", 0) / total,
-            ov.get("total_timeout",   0) / total,
-            ov.get("total_error",     0) / total,
-        ]
-        vals += [vals[0]]
-        ax.plot(angles, vals, color=color, linewidth=2, label=exp["label"])
-        ax.fill(angles, vals, color=color, alpha=0.15)
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(cats, color="white", fontsize=9)
-    ax.yaxis.set_tick_params(labelcolor="white", labelsize=7)
-    ax.spines["polar"].set_color(SPINE)
-    for gl in ax.yaxis.get_gridlines():
-        gl.set_color(SPINE)
-    for gl in ax.xaxis.get_gridlines():
-        gl.set_color(SPINE)
-    ax.set_title("Multi-Metric Radar: All Experiments", color="white", fontsize=13, pad=20)
-    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9,
-              loc="upper right", bbox_to_anchor=(1.4, 1.15))
+    ax.legend(
+        facecolor=BG_LEGEND, labelcolor="white", fontsize=9,
+        loc="lower right",
+    )
     plt.tight_layout()
-    _save(fig, "cmp_chart5_radar.png")
+    _save(fig, "cmp_chart4_avg_detection_time.png")
 
     log.info("Semua comparison charts tersimpan → %s", charts_dir)
 
@@ -720,16 +822,13 @@ Examples:
     log.info("Experiments to run: %s", exps_to_run)
 
     # ── FASE 1: Shared Preparation (Step 1–3) — dijalankan SEKALI ────────
-    shared_step = args.from_step  # bisa 1, 2, atau 3; kalau >= 4 maka di-skip semua
+    shared_step    = args.from_step
     injection_logs = run_shared_preparation(from_step=shared_step)
     if injection_logs is None:
         log.error("Shared preparation gagal. Aborting.")
         sys.exit(1)
 
     # ── FASE 2: Per-Experiment Fuzzing (Step 4–5) ─────────────────────────
-    # from_step <= 3 berarti step 4 pasti dijalankan (shared sudah selesai)
-    # from_step == 4 berarti skip step 1–3, langsung step 4
-    # from_step == 5 berarti hanya step 5
     exp_from_step = max(args.from_step, 4)
 
     results_summary: Dict[str, bool] = {}
