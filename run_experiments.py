@@ -36,8 +36,9 @@ Output structure:
         └── charts_*/
             ├── cmp_chart1_detection_rate.png
             ├── cmp_chart2_activation_rate.png
-            ├── cmp_chart3_ecdf_detection_time.png
-            └── cmp_chart4_avg_detection_time.png
+            ├── cmp_chart3_ecdf_single_function.png
+            ├── cmp_chart4_ecdf_cross_function.png
+            └── cmp_chart5_avg_detection_time.png
 """
 
 import argparse
@@ -467,7 +468,7 @@ def run_comparison(exp_names: Optional[List[str]] = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Comparison chart generator — 4 charts
+# Comparison chart generator — 5 charts
 # ---------------------------------------------------------------------------
 
 def _generate_comparison_charts(
@@ -476,11 +477,16 @@ def _generate_comparison_charts(
     timestamp: str,
 ) -> None:
     """
-    Generate four comparison charts:
+    Generate five comparison charts:
         1. Detection Rate  — grouped bar chart (variant × experiment)
         2. Activation Rate — grouped bar chart (variant × experiment)
-        3. ECDF of detection time — cumulative % detected by time T
-        4. Avg detection time — horizontal grouped bar (experiment × variant)
+        3. ECDF single_function — kurva per experiment, varian single function saja
+        4. ECDF cross_function  — kurva per experiment, varian cross function saja
+        5. Avg detection time   — horizontal grouped bar (experiment × variant)
+
+    Pada Chart 3 & 4, setiap kurva mewakili satu experiment.
+    Warna kurva = experiment (biru / oranye / hijau).
+    Ini berbeda dengan ECDF per-pengujian di step5 yang menggabungkan kedua varian.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -575,31 +581,27 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart2_activation_rate.png")
 
-    # ── Chart 3: ECDF of detection time ─────────────────────────────────
+    # ── Chart 3 & 4: ECDF per varian — dipisah menjadi 2 chart ──────────
     #
-    # x-axis : time in seconds (0 → ECHIDNA_TIMEOUT)
-    # y-axis : cumulative % of total injected bugs detected by time T
+    # Setiap chart menampilkan satu varian saja.
+    # Setiap kurva dalam chart mewakili satu experiment.
+    # Warna kurva = experiment (biru / oranye / hijau).
     #
-    # Each curve represents one experiment × variant combination.
-    # Color  = experiment  (blue / orange / green)
-    # Style  = variant     (solid = single_function, dashed = cross_function)
-    #
-    # ECDF is used here because detected contracts differ across experiments —
-    # a time-based x-axis lets all three curves share the same scale.
+    # Berbeda dengan ECDF per-pengujian di step5 yang menggabungkan
+    # kedua varian menjadi 1 kurva tunggal.
 
-    fig, ax = plt.subplots(figsize=(11, 5))
-    _apply_dark(fig, ax)
+    for variant_idx, variant in enumerate(VARIANTS):
+        variant_label = variant.replace("_", " ").title()
+        chart_num     = variant_idx + 3   # Chart 3 = single_function, Chart 4 = cross_function
+        fname_variant = variant           # gunakan nama varian di nama file
 
-    variant_styles = {
-        VARIANTS[0]: {"linestyle": "-",  "label_suffix": "single fn"},
-        VARIANTS[1]: {"linestyle": "--", "label_suffix": "cross fn"},
-    }
+        fig, ax = plt.subplots(figsize=(11, 5))
+        _apply_dark(fig, ax)
 
-    for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
-        raw_results = exp["raw_results"]
+        for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
+            raw_results = exp["raw_results"]
 
-        for variant, vstyle in variant_styles.items():
-            # Collect valid detection times (> 0) for this variant
+            # Kumpulkan waktu deteksi yang valid untuk varian ini saja
             det_times = sorted([
                 r["detection_time_sec"]
                 for r in raw_results
@@ -610,51 +612,52 @@ def _generate_comparison_charts(
 
             total_injected = exp["metrics"].get(variant, {}).get("total_injected", 1) or 1
 
-            # Build ECDF step function: start at (0, 0), step up on each detection
+            # Bangun ECDF step function: mulai dari (0, 0), naik setiap deteksi
             ecdf_x = [0.0]
             ecdf_y = [0.0]
             for j, t in enumerate(det_times):
                 ecdf_x.append(t)
                 ecdf_y.append((j + 1) / total_injected * 100)
-            # Extend to timeout so the curve reaches the full x range
+            # Perpanjang hingga timeout
             ecdf_x.append(float(ECHIDNA_TIMEOUT))
             ecdf_y.append(len(det_times) / total_injected * 100)
 
-            label = f"{exp['label']} — {vstyle['label_suffix']}"
+            final_pct = len(det_times) / total_injected * 100
             ax.step(
                 ecdf_x, ecdf_y,
                 where="post",
                 color=color,
-                linestyle=vstyle["linestyle"],
                 linewidth=1.8,
-                label=label,
+                label=f"{exp['label']}  ({final_pct:.0f}% detected)",
                 alpha=0.9,
+                zorder=3,
             )
 
-    ax.axvline(
-        x=ECHIDNA_TIMEOUT, color="#e74c3c",
-        linewidth=1.0, linestyle=":", alpha=0.7,
-        label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
-    )
-    ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
-    ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
-    ax.set_title(
-        "ECDF (Cumulative Detection Rate over Time)\n"
-        "(solid = single function, dashed = cross function)",
-        color="white", fontsize=12, pad=12,
-    )
-    ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
-    ax.set_ylim(0, 105)
-    ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-    ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=8, loc="lower right", ncol=2)
-    plt.tight_layout()
-    _save(fig, "cmp_chart3_ecdf_detection_time.png")
+        ax.axvline(
+            x=ECHIDNA_TIMEOUT, color="#e74c3c",
+            linewidth=1.0, linestyle=":", alpha=0.7,
+            label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
+        )
+        ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
+        ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
+        ax.set_title(
+            f"ECDF (Cumulative Detection Rate over Time)\n"
+            f"Variant: {variant_label}  (kurva per experiment)",
+            color="white", fontsize=12, pad=12,
+        )
+        ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
+        ax.set_ylim(0, 108)
+        ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
+        ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
+        ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9,
+                  loc="lower right")
+        plt.tight_layout()
+        _save(fig, f"cmp_chart{chart_num}_ecdf_{fname_variant}.png")
 
-    # ── Chart 4: Average detection time — horizontal grouped bar ─────────
+    # ── Chart 5: Average detection time — horizontal grouped bar ─────────
     #
-    # Each experiment has two bars (one per variant) grouped horizontally.
-    # Shorter bars indicate faster detection.
+    # Setiap experiment memiliki dua bar (satu per varian) dikelompokkan horizontal.
+    # Bar yang lebih pendek = deteksi lebih cepat.
 
     n_variants  = len(VARIANTS)
     bar_h       = 0.25
@@ -673,7 +676,7 @@ def _generate_comparison_charts(
         avg_times = []
         for exp in all_exp_data:
             t = exp["metrics"].get(variant, {}).get("avg_detection_time_sec", -1)
-            avg_times.append(max(t, 0))   # show 0 instead of -1 when no detection occurred
+            avg_times.append(max(t, 0))   # tampilkan 0 jika tidak ada deteksi
 
         y_positions = y_base + var_offsets[vi]
         bars = ax.barh(
@@ -711,7 +714,7 @@ def _generate_comparison_charts(
     )
     ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
     plt.tight_layout()
-    _save(fig, "cmp_chart4_avg_detection_time.png")
+    _save(fig, "cmp_chart5_avg_detection_time.png")
 
     log.info("All comparison charts saved → %s", charts_dir)
 
