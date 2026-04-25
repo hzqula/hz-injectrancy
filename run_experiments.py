@@ -5,12 +5,12 @@ Runs the full reentrancy detection pipeline for each experiment
 configuration defined in experiment_configs.py, then triggers
 a comparative analysis across all results.
 
-Steps 1–3 run ONCE (shared) because their output is identical
+Steps 1–3 run once (shared) because their output is identical
 across all experiments. Steps 4–5 run per-experiment since they
 depend on each experiment's Echidna configuration.
 
 Usage:
-    python run_experiments.py                        # Run all 3 experiments
+    python run_experiments.py                        # Run all experiments
     python run_experiments.py --exp exp1_light       # Run a single experiment
     python run_experiments.py --compare-only         # Skip fuzzing, compare existing results
     python run_experiments.py --from-step 4          # Resume all experiments from step N
@@ -98,7 +98,7 @@ def _patch_config(exp_cfg: Dict[str, Any]) -> Dict[str, Any]:
     """
     Temporarily overwrite the config module with the given experiment's values.
     Only ECHIDNA_CONFIG and ECHIDNA_TIMEOUT are modified — directory paths for
-    Steps 4–5 are set here as well and restored after the experiment completes.
+    Steps 4–5 are also updated here and restored after the experiment completes.
 
     Returns a snapshot of the original config values for restoration.
     """
@@ -484,9 +484,8 @@ def _generate_comparison_charts(
         4. ECDF cross_function  — one curve per experiment, cross_function variant only
         5. Average detection time — horizontal grouped bar (experiment × variant)
 
-    Charts 3 and 4 each show one variant in isolation so that experiments can be
-    compared on the same axis without mixing variants. This differs from the
-    per-experiment ECDF in step5, which combines both variants into a single curve.
+    Charts 3 and 4 each show one variant in isolation so experiments can be
+    compared on the same axis without mixing variants.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -581,13 +580,14 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart2_activation_rate.png")
 
-    # ── Charts 3 & 4: ECDF per variant — one chart per variant ──────────
+    # ── Charts 3 & 4: ECDF per variant ──────────────────────────────────
     #
     # x-axis : Echidna fuzzing time per contract (seconds)
     # y-axis : cumulative % of injected bugs detected by time T
     #
-    # This differs from the per-experiment ECDF produced in step5, which
-    # combines both variants into a single curve per experiment.
+    # One chart per variant so experiments can be overlaid on the same axes.
+    # This differs from the per-experiment ECDF in step5, which combines
+    # both variants into a single curve.
 
     for variant_idx, variant in enumerate(VARIANTS):
         variant_label = variant.replace("_", " ").title()
@@ -599,7 +599,6 @@ def _generate_comparison_charts(
         for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
             raw_results = exp["raw_results"]
 
-            # Collect valid detection times (> 0) for this variant only
             det_times = sorted([
                 r["detection_time_sec"]
                 for r in raw_results
@@ -616,7 +615,7 @@ def _generate_comparison_charts(
             for j, t in enumerate(det_times):
                 ecdf_x.append(t)
                 ecdf_y.append((j + 1) / total_injected * 100)
-            # Extend to timeout so the curve reaches the full x range
+            # Extend to timeout so the curve spans the full x range
             ecdf_x.append(float(ECHIDNA_TIMEOUT))
             ecdf_y.append(len(det_times) / total_injected * 100)
 
@@ -653,7 +652,7 @@ def _generate_comparison_charts(
 
     # ── Chart 5: Average detection time — horizontal grouped bar ─────────
     #
-    # Each experiment has two bars (one per variant) grouped horizontally.
+    # One group of bars per experiment; one bar per variant within each group.
     # Shorter bars indicate faster detection.
 
     n_variants  = len(VARIANTS)
@@ -673,7 +672,7 @@ def _generate_comparison_charts(
         avg_times = []
         for exp in all_exp_data:
             t = exp["metrics"].get(variant, {}).get("avg_detection_time_sec", -1)
-            avg_times.append(max(t, 0))   # show 0 instead of -1 when no detection occurred
+            avg_times.append(max(t, 0))   # display 0 instead of -1 when no detection occurred
 
         y_positions = y_base + var_offsets[vi]
         bars = ax.barh(
@@ -759,7 +758,7 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_experiments.py                         # Run all 3 experiments
+  python run_experiments.py                         # Run all experiments
   python run_experiments.py --exp exp1_light        # Run one experiment only
   python run_experiments.py --compare-only          # Compare existing results
   python run_experiments.py --from-step 4           # Resume all experiments from step 4
