@@ -91,45 +91,52 @@ def _step_header(step_num: int) -> None:
 # Prerequisites check
 # ---------------------------------------------------------------------------
 
-def _check_prerequisites() -> bool:
-    """Verify all prerequisites before running the pipeline."""
+def _check_prerequisites(from_step: int = 1) -> bool:
+    """
+    Verify only the prerequisites relevant to the steps that will actually run.
+
+    - Steps 1–3 require: contracts directory + solc
+    - Step  4   requires: echidna (warning only, not fatal)
+    - Step  5   requires: nothing external
+    """
     issues = []
 
-    # Contracts directory
-    if not os.path.isdir(BASE_CONTRACTS_DIR):
-        issues.append(
-            f"Directory not found: {BASE_CONTRACTS_DIR}\n"
-            f"  → Create the directory and place your .sol files inside."
-        )
-    elif not any(f.endswith(".sol") for f in os.listdir(BASE_CONTRACTS_DIR)):
-        issues.append(
-            f"No .sol files found in: {BASE_CONTRACTS_DIR}\n"
-            f"  → Add at least one Solidity contract."
-        )
+    # Contracts directory and solc are only needed for steps 1–3
+    if from_step <= 3:
+        if not os.path.isdir(BASE_CONTRACTS_DIR):
+            issues.append(
+                f"Directory not found: {BASE_CONTRACTS_DIR}\n"
+                f"  → Create the directory and place your .sol files inside."
+            )
+        elif not any(f.endswith(".sol") for f in os.listdir(BASE_CONTRACTS_DIR)):
+            issues.append(
+                f"No .sol files found in: {BASE_CONTRACTS_DIR}\n"
+                f"  → Add at least one Solidity contract."
+            )
 
-    # solc
-    try:
-        r = subprocess.run(["solc", "--version"], capture_output=True, timeout=5)
-        if r.returncode != 0:
-            issues.append("solc did not respond correctly.")
-    except FileNotFoundError:
-        issues.append(
-            "solc not found.\n"
-            "  → Install: https://docs.soliditylang.org/en/latest/installing-solidity.html"
-        )
-    except Exception:
-        issues.append("Failed to check solc.")
+        try:
+            r = subprocess.run(["solc", "--version"], capture_output=True, timeout=5)
+            if r.returncode != 0:
+                issues.append("solc did not respond correctly.")
+        except FileNotFoundError:
+            issues.append(
+                "solc not found.\n"
+                "  → Install: https://docs.soliditylang.org/en/latest/installing-solidity.html"
+            )
+        except (PermissionError, OSError) as e:
+            issues.append(f"Could not run solc: {e}")
 
-    # echidna (optional — warning only)
-    try:
-        subprocess.run(["echidna", "--version"], capture_output=True, timeout=5)
-    except FileNotFoundError:
-        log.warning(
-            "Echidna not found. Step 4 will produce ERROR status.\n"
-            "  → Install: https://github.com/crytic/echidna"
-        )
-    except Exception:
-        pass
+    # Echidna is only needed for step 4 (warning only — not fatal)
+    if from_step <= 4:
+        try:
+            subprocess.run(["echidna", "--version"], capture_output=True, timeout=5)
+        except FileNotFoundError:
+            log.warning(
+                "Echidna not found. Step 4 will produce ERROR status.\n"
+                "  → Install: https://github.com/crytic/echidna"
+            )
+        except Exception:
+            pass
 
     if issues:
         log.error("Prerequisites not met:")
@@ -393,16 +400,20 @@ Examples:
         import logging
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Prerequisites-only mode
+    # Determine the earliest step that will actually run
+    effective_step = args.step if args.step is not None else args.from_step
+
+    # --check mode: always verify all prerequisites regardless of step
     if args.check:
-        ok = _check_prerequisites()
+        ok = _check_prerequisites(from_step=1)
         log.info(
             "✓ All prerequisites met." if ok
             else "✗ Some prerequisites are not satisfied."
         )
         sys.exit(0 if ok else 1)
 
-    if not _check_prerequisites():
+    # Normal run: only check what the target step actually needs
+    if not _check_prerequisites(from_step=effective_step):
         log.error("Pipeline cannot start. Address the issues listed above.")
         sys.exit(1)
 
