@@ -480,13 +480,13 @@ def _generate_comparison_charts(
     Generate five comparison charts:
         1. Detection Rate  — grouped bar chart (variant × experiment)
         2. Activation Rate — grouped bar chart (variant × experiment)
-        3. ECDF single_function — kurva per experiment, varian single function saja
-        4. ECDF cross_function  — kurva per experiment, varian cross function saja
-        5. Avg detection time   — horizontal grouped bar (experiment × variant)
+        3. ECDF single_function — one curve per experiment, single_function variant only
+        4. ECDF cross_function  — one curve per experiment, cross_function variant only
+        5. Average detection time — horizontal grouped bar (experiment × variant)
 
-    Pada Chart 3 & 4, setiap kurva mewakili satu experiment.
-    Warna kurva = experiment (biru / oranye / hijau).
-    Ini berbeda dengan ECDF per-pengujian di step5 yang menggabungkan kedua varian.
+    Charts 3 and 4 each show one variant in isolation so that experiments can be
+    compared on the same axis without mixing variants. This differs from the
+    per-experiment ECDF in step5, which combines both variants into a single curve.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -581,19 +581,17 @@ def _generate_comparison_charts(
     plt.tight_layout()
     _save(fig, "cmp_chart2_activation_rate.png")
 
-    # ── Chart 3 & 4: ECDF per varian — dipisah menjadi 2 chart ──────────
+    # ── Charts 3 & 4: ECDF per variant — one chart per variant ──────────
     #
-    # Setiap chart menampilkan satu varian saja.
-    # Setiap kurva dalam chart mewakili satu experiment.
-    # Warna kurva = experiment (biru / oranye / hijau).
+    # x-axis : Echidna fuzzing time per contract (seconds)
+    # y-axis : cumulative % of injected bugs detected by time T
     #
-    # Berbeda dengan ECDF per-pengujian di step5 yang menggabungkan
-    # kedua varian menjadi 1 kurva tunggal.
+    # This differs from the per-experiment ECDF produced in step5, which
+    # combines both variants into a single curve per experiment.
 
     for variant_idx, variant in enumerate(VARIANTS):
         variant_label = variant.replace("_", " ").title()
-        chart_num     = variant_idx + 3   # Chart 3 = single_function, Chart 4 = cross_function
-        fname_variant = variant           # gunakan nama varian di nama file
+        chart_num     = variant_idx + 3   # chart 3 = single_function, chart 4 = cross_function
 
         fig, ax = plt.subplots(figsize=(11, 5))
         _apply_dark(fig, ax)
@@ -601,7 +599,7 @@ def _generate_comparison_charts(
         for i, (exp, color) in enumerate(zip(all_exp_data, EXP_COLORS)):
             raw_results = exp["raw_results"]
 
-            # Kumpulkan waktu deteksi yang valid untuk varian ini saja
+            # Collect valid detection times (> 0) for this variant only
             det_times = sorted([
                 r["detection_time_sec"]
                 for r in raw_results
@@ -612,13 +610,13 @@ def _generate_comparison_charts(
 
             total_injected = exp["metrics"].get(variant, {}).get("total_injected", 1) or 1
 
-            # Bangun ECDF step function: mulai dari (0, 0), naik setiap deteksi
+            # Build ECDF step function: start at (0, 0), step up on each detection
             ecdf_x = [0.0]
             ecdf_y = [0.0]
             for j, t in enumerate(det_times):
                 ecdf_x.append(t)
                 ecdf_y.append((j + 1) / total_injected * 100)
-            # Perpanjang hingga timeout
+            # Extend to timeout so the curve reaches the full x range
             ecdf_x.append(float(ECHIDNA_TIMEOUT))
             ecdf_y.append(len(det_times) / total_injected * 100)
 
@@ -641,23 +639,22 @@ def _generate_comparison_charts(
         ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
         ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
         ax.set_title(
-            f"ECDF (Cumulative Detection Rate over Time)\n"
-            f"Variant: {variant_label}  (kurva per experiment)",
+            f"ECDF — Cumulative Detection Rate over Time\n"
+            f"Variant: {variant_label}",
             color="white", fontsize=12, pad=12,
         )
         ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
         ax.set_ylim(0, 108)
         ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
         ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-        ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9,
-                  loc="lower right")
+        ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
         plt.tight_layout()
-        _save(fig, f"cmp_chart{chart_num}_ecdf_{fname_variant}.png")
+        _save(fig, f"cmp_chart{chart_num}_ecdf_{variant}.png")
 
     # ── Chart 5: Average detection time — horizontal grouped bar ─────────
     #
-    # Setiap experiment memiliki dua bar (satu per varian) dikelompokkan horizontal.
-    # Bar yang lebih pendek = deteksi lebih cepat.
+    # Each experiment has two bars (one per variant) grouped horizontally.
+    # Shorter bars indicate faster detection.
 
     n_variants  = len(VARIANTS)
     bar_h       = 0.25
@@ -676,7 +673,7 @@ def _generate_comparison_charts(
         avg_times = []
         for exp in all_exp_data:
             t = exp["metrics"].get(variant, {}).get("avg_detection_time_sec", -1)
-            avg_times.append(max(t, 0))   # tampilkan 0 jika tidak ada deteksi
+            avg_times.append(max(t, 0))   # show 0 instead of -1 when no detection occurred
 
         y_positions = y_base + var_offsets[vi]
         bars = ax.barh(
