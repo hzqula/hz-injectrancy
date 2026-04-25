@@ -34,7 +34,7 @@ EXPERIMENTS: List[Dict[str, Any]] = [
             "coverage":        True,
             "timeout":         60,
             "deployer":        "0x30000",
-            "sender": ["0x10000", "0x20000", "0x30000"]
+            "sender": ["0x10000", "0x20000", "0x30000"],
             "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
@@ -55,7 +55,7 @@ EXPERIMENTS: List[Dict[str, Any]] = [
             "coverage":        True,
             "timeout":         180,
             "deployer":        "0x30000",
-            "sender": ["0x10000", "0x20000", "0x30000"]
+            "sender": ["0x10000", "0x20000", "0x30000"],
             "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
@@ -76,7 +76,7 @@ EXPERIMENTS: List[Dict[str, Any]] = [
             "coverage":        True,
             "timeout":         360,
             "deployer":        "0x30000",
-            "sender": ["0x10000", "0x20000", "0x30000"]
+            "sender": ["0x10000", "0x20000", "0x30000"],
             "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
