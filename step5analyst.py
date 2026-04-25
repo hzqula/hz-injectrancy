@@ -8,15 +8,14 @@ Analyzes Echidna test results and computes evaluation metrics:
     3. Avg Detection Time : mean detection time per bug variant (seconds)
 
 Visualization output (PNG, dark theme):
-    chart1_rate_comparison.png          — Detection & Activation Rate grouped bar
-    chart2_detection_time_dist.png      — Detection time violin + strip plot
-    chart3_ecdf_detection_time.png      — ECDF cumulative detection over time
-                                          (kedua varian digabung dalam 1 kurva per experiment)
+    chart1_rate_comparison.png     — Detection & Activation Rate grouped horizontal bar
+    chart2_detection_time_dist.png — Detection time violin + strip plot
+    chart3_ecdf_detection_time.png — ECDF cumulative detection over time
+                                     (both variants combined into one curve)
 """
 
 import csv
 import json
-import math
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -30,6 +29,7 @@ from config import ANALYSIS_RESULTS_DIR, BUG_VARIANTS, ECHIDNA_TIMEOUT, LOGS_DIR
 from logger import get_logger
 
 log = get_logger("analyzer")
+
 
 # ---------------------------------------------------------------------------
 # Visual theme constants
@@ -45,16 +45,9 @@ _VARIANT_COLORS = {
     "single_function": "#4C72B0",
     "cross_function":  "#DD8452",
 }
-_STATUS_COLORS = {
-    "Detected":              "#2ecc71",
-    "Reachable (not broken)": "#3498db",
-    "Unreachable":            "#e74c3c",
-    "Timeout":                "#f39c12",
-    "Error":                  "#95a5a6",
-}
 
 # Variants to include in per-variant charts (excludes the "overall" aggregate)
-_PER_VARIANT = [v for v in BUG_VARIANTS]
+_PER_VARIANT = list(BUG_VARIANTS)
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +64,7 @@ class MetricResult:
         self.total_activated     = 0
         self.total_timeout       = 0
         self.total_error         = 0
-        self.detection_times:    List[float] = []   # Only for DETECTED results
+        self.detection_times:    List[float] = []
         self.detected_files:     List[str]   = []
         self.not_detected_files: List[str]   = []
 
@@ -88,7 +81,7 @@ class MetricResult:
     @property
     def avg_detection_time(self) -> float:
         """
-        Average Detection Time  (Chapter 2.5.3).
+        Average Detection Time (Chapter 2.5.3).
         Falls back to ECHIDNA_TIMEOUT when no detection times are recorded.
         """
         return (
@@ -101,7 +94,7 @@ class MetricResult:
     def total_reachable(self) -> int:
         """
         Reachable = bugs that were activated but did NOT break the property.
-        Demonstrates compiler-level protection (e.g. Solidity 0.8+ underflow revert).
+        Indicates compiler-level protection (e.g. Solidity 0.8+ underflow revert).
         """
         return self.total_activated - self.total_detected
 
@@ -183,7 +176,7 @@ def compute_metrics(echidna_results: list) -> Dict[str, MetricResult]:
         detection_time  = r.get("detection_time_sec", -1.0)
         source_file     = r.get("source_file", "unknown")
 
-        # Detection Rate
+        # Detection rate counters
         if status == "DETECTED" and property_broken:
             mr.total_detected      += 1
             overall.total_detected += 1
@@ -196,7 +189,7 @@ def compute_metrics(echidna_results: list) -> Dict[str, MetricResult]:
             mr.not_detected_files.append(source_file)
             overall.not_detected_files.append(source_file)
 
-        # Activation Rate
+        # Activation rate counters
         if bug_line_hit:
             mr.total_activated      += 1
             overall.total_activated += 1
@@ -325,6 +318,7 @@ def _chart_detection_time_dist(
 ) -> Optional[str]:
     """
     Violin plot with individual data points overlaid (strip chart).
+    Skipped when fewer than 3 detected results with timing data are available.
     """
     detected = [
         r for r in echidna_results
@@ -341,7 +335,7 @@ def _chart_detection_time_dist(
     _apply_dark_theme(fig, ax)
 
     parts = ax.violinplot(groups, positions=range(len(labels)), widths=0.6, showmedians=True)
-    for i, (body, lbl) in enumerate(zip(parts["bodies"], labels)):
+    for body, lbl in zip(parts["bodies"], labels):
         body.set_facecolor(_VARIANT_COLORS.get(lbl, "#888888"))
         body.set_alpha(0.5)
     parts["cmedians"].set_color("white")
@@ -370,7 +364,7 @@ def _chart_detection_time_dist(
 
 
 # ---------------------------------------------------------------------------
-# Chart 3 — ECDF waktu deteksi (kedua varian digabung)
+# Chart 3 — ECDF of detection time (both variants combined)
 # ---------------------------------------------------------------------------
 
 def _chart_ecdf_combined(
@@ -379,23 +373,22 @@ def _chart_ecdf_combined(
     output_dir: str,
 ) -> str:
     """
-    ECDF (Empirical Cumulative Distribution Function) untuk satu pengujian.
+    ECDF (Empirical Cumulative Distribution Function) for detection time.
 
-    Kedua varian (single_function dan cross_function) digabung menjadi
-    satu kurva tunggal yang merepresentasikan keseluruhan pengujian ini.
+    Both variants (single_function and cross_function) are combined into a
+    single curve representing the overall detection performance of this run.
 
-    x-axis : waktu (detik), dari 0 hingga ECHIDNA_TIMEOUT
-    y-axis : persentase kumulatif bug yang terdeteksi pada waktu T
+    x-axis : elapsed time in seconds, from 0 to ECHIDNA_TIMEOUT
+    y-axis : cumulative percentage of injected bugs detected by time T
     """
     fig, ax = plt.subplots(figsize=(10, 5))
     _apply_dark_theme(fig, ax)
 
-    # Gabungkan semua hasil deteksi dari kedua varian
+    # Collect detection times from both variants
     all_det_times = sorted([
         r["detection_time_sec"]
         for r in echidna_results
-        if r.get("property_broken")
-        and r.get("detection_time_sec", -1) > 0
+        if r.get("property_broken") and r.get("detection_time_sec", -1) > 0
     ])
 
     total_injected = sum(
@@ -404,13 +397,13 @@ def _chart_ecdf_combined(
         if v in metrics
     ) or 1
 
-    # Bangun step function ECDF: mulai dari (0, 0), naik setiap kali ada deteksi
+    # Build ECDF step function: start at (0, 0), step up on each detection
     ecdf_x = [0.0]
     ecdf_y = [0.0]
     for j, t in enumerate(all_det_times):
         ecdf_x.append(t)
         ecdf_y.append((j + 1) / total_injected * 100)
-    # Perpanjang hingga timeout agar kurva mencapai ujung sumbu-x
+    # Extend to timeout so the curve spans the full x range
     ecdf_x.append(float(ECHIDNA_TIMEOUT))
     ecdf_y.append(len(all_det_times) / total_injected * 100)
 
@@ -424,23 +417,21 @@ def _chart_ecdf_combined(
         zorder=3,
     )
 
-    # Titik data aktual
+    # Overlay individual detection points
     if all_det_times:
-        ys_pts = [(j + 1) / total_injected * 100 for j in range(len(all_det_times))]
+        y_pts = [(j + 1) / total_injected * 100 for j in range(len(all_det_times))]
         ax.scatter(
-            all_det_times, ys_pts,
+            all_det_times, y_pts,
             color="#55A868", edgecolors="white", linewidths=0.5,
             s=35, zorder=4, alpha=0.85,
         )
 
-    # Garis timeout
     ax.axvline(
         x=ECHIDNA_TIMEOUT, color="#e74c3c",
         linewidth=1.2, linestyle=":", alpha=0.75,
         label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
     )
 
-    # Anotasi detection rate akhir
     final_pct = len(all_det_times) / total_injected * 100
     ax.annotate(
         f"  {final_pct:.1f}% detected",
@@ -453,7 +444,7 @@ def _chart_ecdf_combined(
     ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
     ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
     ax.set_title(
-        "ECDF(Cumulative Detection Rate over Time)\n"
+        "ECDF — Cumulative Detection Rate over Time\n"
         "(single_function + cross_function combined)",
         color="white", fontsize=12, pad=12,
     )
@@ -470,7 +461,7 @@ def _chart_ecdf_combined(
 
 
 # ---------------------------------------------------------------------------
-# Visualization runner — hanya 3 chart
+# Chart runner
 # ---------------------------------------------------------------------------
 
 def generate_charts(
@@ -480,23 +471,21 @@ def generate_charts(
     timestamp: str,
 ) -> List[str]:
     """
-    Render 3 chart dan simpan ke *output_dir*.
+    Render all 3 charts and save them to a timestamped subdirectory of *output_dir*.
 
     Charts:
-        1. Rate Comparison (grouped horizontal bar)
+        1. Detection & Activation Rate (grouped horizontal bar)
         2. Detection Time Distribution (violin + strip)
-        3. ECDF waktu deteksi (kedua varian digabung)
+        3. ECDF — cumulative detection time (both variants combined)
 
     Returns:
-        List of file paths untuk setiap chart yang berhasil dibuat.
+        List of file paths for each chart that was successfully created.
     """
     charts_dir = os.path.join(output_dir, f"charts_{timestamp}")
     os.makedirs(charts_dir, exist_ok=True)
 
     log.info("")
     log.info("Generating charts → %s", charts_dir)
-
-    saved: List[str] = []
 
     chart_fns = [
         ("Rate comparison (grouped bar)",
@@ -507,6 +496,7 @@ def generate_charts(
          lambda: _chart_ecdf_combined(echidna_results, metrics, charts_dir)),
     ]
 
+    saved: List[str] = []
     for name, fn in chart_fns:
         try:
             path = fn()
@@ -595,8 +585,8 @@ def run_analysis(
     Steps performed:
         1. Load raw Echidna results JSON
         2. Compute per-variant and overall metrics
-        3. Print a summary table to the console / log
-        4. Export metrics CSV, detail CSV, dan summary JSON
+        3. Print a summary table to the log
+        4. Export metrics CSV, detail CSV, and summary JSON
         5. Generate 3 visualization charts
 
     Args:
@@ -627,11 +617,9 @@ def run_analysis(
 
     log.info("Results loaded: %d entries", len(echidna_results))
 
-    # Compute & display
     metrics = compute_metrics(echidna_results)
     print_metrics_table(metrics)
 
-    # Export tabular data
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     export_metrics_csv(metrics,        os.path.join(output_dir, f"metrics_summary_{ts}.csv"))
     export_detail_csv(echidna_results, os.path.join(output_dir, f"results_detail_{ts}.csv"))
@@ -639,10 +627,8 @@ def run_analysis(
         metrics, echidna_results, os.path.join(output_dir, f"summary_{ts}.json")
     )
 
-    # Generate charts (3 saja)
     chart_paths = generate_charts(metrics, echidna_results, output_dir, ts)
 
-    # Key insights log block
     overall = metrics.get("overall")
     if overall and overall.total_injected > 0:
         log.info("")
@@ -667,7 +653,7 @@ def run_analysis(
         if overall.not_detected_files:
             log.info("")
             log.info(
-                "  Undetected bugs (%d contract(s)) [mostly Reachable]:",
+                "  Undetected bugs (%d contract(s)):",
                 len(overall.not_detected_files),
             )
             for fname in overall.not_detected_files[:10]:
