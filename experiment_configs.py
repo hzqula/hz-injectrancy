@@ -29,16 +29,13 @@ EXPERIMENTS: List[Dict[str, Any]] = [
         ),
         "echidna_config": {
             "testLimit":       50_000,
-            "seqLen":          50,
-            "shrinkLimit":     1_000,
+            "seqLen":          100,
+            "shrinkLimit":     5_000,
             "coverage":        True,
             "timeout":         60,
-            "deployer":        "0x30000000000000000000000000000000000000000",
-            "sender": [
-                "0x30000000000000000000000000000000000000000",
-                "0x10000000000000000000000000000000000000000",
-            ],
-            "balanceAddr":     10_000,
+            "deployer":        "0x30000",
+            "sender": ["0x10000", "0x20000", "0x30000"]
+            "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
         },
@@ -52,17 +49,14 @@ EXPERIMENTS: List[Dict[str, Any]] = [
             "Mirrors the default pipeline config for a fair midpoint."
         ),
         "echidna_config": {
-            "testLimit":       150_000,
-            "seqLen":          100,
-            "shrinkLimit":     5_000,
+            "testLimit":       100_000,
+            "seqLen":          150,
+            "shrinkLimit":     10_000,
             "coverage":        True,
             "timeout":         180,
-            "deployer":        "0x30000000000000000000000000000000000000000",
-            "sender": [
-                "0x30000000000000000000000000000000000000000",
-                "0x10000000000000000000000000000000000000000",
-            ],
-            "balanceAddr":     10_000,
+            "deployer":        "0x30000",
+            "sender": ["0x10000", "0x20000", "0x30000"]
+            "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
         },
@@ -76,17 +70,14 @@ EXPERIMENTS: List[Dict[str, Any]] = [
             "Maximises detection at the cost of execution time."
         ),
         "echidna_config": {
-            "testLimit":       300_000,
+            "testLimit":       150_000,
             "seqLen":          200,
-            "shrinkLimit":     10_000,
+            "shrinkLimit":     15_000,
             "coverage":        True,
             "timeout":         360,
-            "deployer":        "0x30000000000000000000000000000000000000000",
-            "sender": [
-                "0x30000000000000000000000000000000000000000",
-                "0x10000000000000000000000000000000000000000",
-            ],
-            "balanceAddr":     10_000,
+            "deployer":        "0x30000",
+            "sender": ["0x10000", "0x20000", "0x30000"]
+            "balanceAddr":     0xffffffff,
             "balanceContract": 0,
             "maxTimeDelay":    3_600,
         },
