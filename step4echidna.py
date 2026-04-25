@@ -518,7 +518,6 @@ def run_echidna_all(
         if not r.bug_line_hit and not r.property_broken
         and r.status not in ("TIMEOUT", "ERROR")
     )
-    native_bug = sum(1 for r in all_results if not r.bug_line_hit and r.property_broken)
     timeout    = sum(1 for r in all_results if r.status == "TIMEOUT")
     error      = sum(1 for r in all_results if r.status == "ERROR")
 
@@ -527,7 +526,6 @@ def run_echidna_all(
     log.info("  EXPLOITED   (Act: YES, Det: YES) : %d", exploited)
     log.info("  NEUTRALIZED (Act: YES, Det: NO ) : %d", neutralized)
     log.info("  UNREACHABLE (Act: NO , Det: NO ) : %d", unreachable)
-    log.info("  NATIVE_BUG  (Act: NO , Det: YES) : %d", native_bug)
     log.info("  " + "-" * 40)
     log.info("  TIMEOUT                          : %d", timeout)
     log.info("  ERROR                            : %d", error)
