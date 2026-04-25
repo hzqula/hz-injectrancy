@@ -8,12 +8,10 @@ Analyzes Echidna test results and computes evaluation metrics:
     3. Avg Detection Time : mean detection time per bug variant (seconds)
 
 Visualization output (PNG, dark theme):
-    chart1_rate_comparison.png      — Detection & Activation Rate grouped bar
-    chart2_detection_time_dist.png  — Detection time violin + strip plot
-    chart3_status_breakdown.png     — Stacked bar: result status per variant
-    chart4_detection_time_scatter.png — Per-contract detection time line/scatter
-    chart5_overall_donut.png        — Outcome distribution donut chart
-    chart6_radar.png                — Multi-metric radar / spider chart
+    chart1_rate_comparison.png          — Detection & Activation Rate grouped bar
+    chart2_detection_time_dist.png      — Detection time violin + strip plot
+    chart3_ecdf_detection_time.png      — ECDF cumulative detection over time
+                                          (kedua varian digabung dalam 1 kurva per experiment)
 """
 
 import csv
@@ -282,8 +280,6 @@ def _chart_rate_comparison(
     """
     Grouped horizontal bar chart comparing Detection Rate vs Activation Rate
     for each variant side-by-side.
-
-    Best for: quick visual comparison of two key rates across variants.
     """
     fig, ax = plt.subplots(figsize=(9, 4.5))
     _apply_dark_theme(fig, ax)
@@ -329,9 +325,6 @@ def _chart_detection_time_dist(
 ) -> Optional[str]:
     """
     Violin plot with individual data points overlaid (strip chart).
-
-    Best for: showing the full distribution shape + spread of detection times,
-              not just the mean — reveals bimodal or skewed distributions.
     """
     detected = [
         r for r in echidna_results
@@ -377,257 +370,107 @@ def _chart_detection_time_dist(
 
 
 # ---------------------------------------------------------------------------
-# Chart 3 — Status breakdown stacked bar
+# Chart 3 — ECDF waktu deteksi (kedua varian digabung)
 # ---------------------------------------------------------------------------
 
-def _chart_status_breakdown(
-    metrics: Dict[str, MetricResult],
-    output_dir: str,
-) -> str:
-    """
-    Stacked bar chart showing how each variant's contracts are distributed
-    across outcome categories: Detected, Reachable, Unreachable, Timeout, Error.
-
-    Best for: understanding where contracts "fall off" in the detection funnel.
-    """
-    fig, ax = plt.subplots(figsize=(9, 5))
-    _apply_dark_theme(fig, ax)
-
-    x     = np.arange(len(_PER_VARIANT))
-    xlbls = [v.replace("_", " ").title() for v in _PER_VARIANT]
-
-    # Segment definitions: (label, extractor_fn, color)
-    segments = [
-        ("Detected",              lambda v: metrics[v].total_detected,
-         "#2ecc71"),
-        ("Reachable (not broken)", lambda v: max(0, metrics[v].total_reachable),
-         "#3498db"),
-        ("Unreachable",           lambda v: max(0, metrics[v].to_dict()["total_not_detected"] - max(0, metrics[v].total_reachable)),
-         "#e74c3c"),
-        ("Timeout",               lambda v: metrics[v].total_timeout,
-         "#f39c12"),
-        ("Error",                 lambda v: metrics[v].total_error,
-         "#95a5a6"),
-    ]
-
-    bottoms = np.zeros(len(_PER_VARIANT))
-    for label, extractor, color in segments:
-        vals = np.array([extractor(v) for v in _PER_VARIANT], dtype=float)
-        bars = ax.bar(x, vals, bottom=bottoms, color=color, label=label, width=0.5, zorder=3)
-        for bar, v in zip(bars, vals):
-            if v > 0:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_y() + bar.get_height() / 2,
-                    str(int(v)), ha="center", va="center",
-                    fontsize=8.5, color="white", fontweight="bold",
-                )
-        bottoms += vals
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(xlbls, color="white", fontsize=10)
-    ax.set_ylabel("Number of Contracts", color="white", fontsize=10)
-    ax.set_title("Result Status Breakdown by Variant", color="white", fontsize=13, pad=12)
-    ax.yaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.6, zorder=0)
-    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=8.5,
-              loc="upper right", ncol=2)
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "chart3_status_breakdown.png")
-    _save(fig, path)
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Chart 4 — Per-contract detection time (sorted line + scatter)
-# ---------------------------------------------------------------------------
-
-def _chart_detection_time_scatter(
+def _chart_ecdf_combined(
     echidna_results: list,
+    metrics: Dict[str, MetricResult],
     output_dir: str,
 ) -> str:
     """
-    Each contract is plotted as a point sorted by detection time.
-    A connecting line shows the cumulative curve.
-    Detected contracts (●) and non-detected (✕) use distinct markers.
+    ECDF (Empirical Cumulative Distribution Function) untuk satu pengujian.
 
-    Best for: showing how quickly the fuzzer converges and which contracts
-              are hardest to detect, analogous to a learning curve.
+    Kedua varian (single_function dan cross_function) digabung menjadi
+    satu kurva tunggal yang merepresentasikan keseluruhan pengujian ini.
+
+    x-axis : waktu (detik), dari 0 hingga ECHIDNA_TIMEOUT
+    y-axis : persentase kumulatif bug yang terdeteksi pada waktu T
     """
-    fig, ax = plt.subplots(figsize=(11, 5))
+    fig, ax = plt.subplots(figsize=(10, 5))
     _apply_dark_theme(fig, ax)
 
-    for vname in _PER_VARIANT:
-        color  = _VARIANT_COLORS.get(vname, "#888888")
-        subset = sorted(
-            [r for r in echidna_results if r.get("variant") == vname],
-            key=lambda r: r.get("detection_time_sec", ECHIDNA_TIMEOUT),
+    # Gabungkan semua hasil deteksi dari kedua varian
+    all_det_times = sorted([
+        r["detection_time_sec"]
+        for r in echidna_results
+        if r.get("property_broken")
+        and r.get("detection_time_sec", -1) > 0
+    ])
+
+    total_injected = sum(
+        metrics[v].total_injected
+        for v in _PER_VARIANT
+        if v in metrics
+    ) or 1
+
+    # Bangun step function ECDF: mulai dari (0, 0), naik setiap kali ada deteksi
+    ecdf_x = [0.0]
+    ecdf_y = [0.0]
+    for j, t in enumerate(all_det_times):
+        ecdf_x.append(t)
+        ecdf_y.append((j + 1) / total_injected * 100)
+    # Perpanjang hingga timeout agar kurva mencapai ujung sumbu-x
+    ecdf_x.append(float(ECHIDNA_TIMEOUT))
+    ecdf_y.append(len(all_det_times) / total_injected * 100)
+
+    ax.step(
+        ecdf_x, ecdf_y,
+        where="post",
+        color="#55A868",
+        linewidth=2.2,
+        label=f"All Variants Combined  ({len(all_det_times)} detected)",
+        alpha=0.95,
+        zorder=3,
+    )
+
+    # Titik data aktual
+    if all_det_times:
+        ys_pts = [(j + 1) / total_injected * 100 for j in range(len(all_det_times))]
+        ax.scatter(
+            all_det_times, ys_pts,
+            color="#55A868", edgecolors="white", linewidths=0.5,
+            s=35, zorder=4, alpha=0.85,
         )
-        xs  = list(range(len(subset)))
-        ys  = [r.get("detection_time_sec", ECHIDNA_TIMEOUT) for r in subset]
-        det = [bool(r.get("property_broken")) for r in subset]
 
-        # Faint connecting line
-        ax.plot(xs, ys, color=color, linewidth=1.2, alpha=0.35, zorder=2)
-
-        xs_d = [x for x, d in zip(xs, det) if d]
-        ys_d = [y for y, d in zip(ys, det) if d]
-        xs_n = [x for x, d in zip(xs, det) if not d]
-        ys_n = [y for y, d in zip(ys, det) if not d]
-
-        label = vname.replace("_", " ").title()
-        ax.scatter(xs_d, ys_d, color=color, edgecolors="white",
-                   linewidths=0.5, s=50, zorder=4, label=f"{label} — Detected")
-        ax.scatter(xs_n, ys_n, color=color, s=50, zorder=4,
-                   alpha=0.45, marker="x", label=f"{label} — Not Detected")
-
-    ax.axhline(
-        y=ECHIDNA_TIMEOUT, color="#e74c3c", linewidth=1.2,
-        linestyle="--", label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
+    # Garis timeout
+    ax.axvline(
+        x=ECHIDNA_TIMEOUT, color="#e74c3c",
+        linewidth=1.2, linestyle=":", alpha=0.75,
+        label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
     )
-    ax.set_xlabel("Contract Index (sorted by detection time)", color="white", fontsize=10)
-    ax.set_ylabel("Detection Time (s)", color="white", fontsize=10)
-    ax.set_title("Per-Contract Detection Time", color="white", fontsize=13, pad=12)
-    ax.yaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.6, zorder=0)
-    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=8.5,
-              loc="upper left", ncol=2)
+
+    # Anotasi detection rate akhir
+    final_pct = len(all_det_times) / total_injected * 100
+    ax.annotate(
+        f"  {final_pct:.1f}% detected",
+        xy=(ECHIDNA_TIMEOUT, final_pct),
+        xytext=(ECHIDNA_TIMEOUT * 0.75, final_pct + 5),
+        color="white", fontsize=9,
+        arrowprops=dict(arrowstyle="->", color="white", lw=0.8),
+    )
+
+    ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
+    ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
+    ax.set_title(
+        "ECDF(Cumulative Detection Rate over Time)\n"
+        "(single_function + cross_function combined)",
+        color="white", fontsize=12, pad=12,
+    )
+    ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
+    ax.set_ylim(0, 108)
+    ax.yaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.5, zorder=0)
+    ax.xaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.5, zorder=0)
+    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
 
     plt.tight_layout()
-    path = os.path.join(output_dir, "chart4_detection_time_scatter.png")
+    path = os.path.join(output_dir, "chart3_ecdf_detection_time.png")
     _save(fig, path)
     return path
 
 
 # ---------------------------------------------------------------------------
-# Chart 5 — Overall outcome donut chart
-# ---------------------------------------------------------------------------
-
-def _chart_overall_donut(
-    metrics: Dict[str, MetricResult],
-    output_dir: str,
-) -> str:
-    """
-    Donut chart showing the proportion of each outcome category across ALL contracts.
-    The hole displays the total contract count.
-
-    Best for: executive-level summary — a single glance at the overall health of
-              the detection campaign.
-    """
-    ov = metrics["overall"]
-
-    detected     = ov.total_detected
-    reachable    = max(0, ov.total_reachable)
-    unreachable  = max(0, ov.to_dict()["total_not_detected"] - reachable)
-    timeout      = ov.total_timeout
-    error        = ov.total_error
-
-    raw = [
-        ("Detected",               detected,    "#2ecc71"),
-        ("Reachable\n(not broken)", reachable,   "#3498db"),
-        ("Unreachable",            unreachable,  "#e74c3c"),
-        ("Timeout",                timeout,      "#f39c12"),
-        ("Error",                  error,        "#95a5a6"),
-    ]
-    filtered = [(lbl, s, c) for lbl, s, c in raw if s > 0]
-    if not filtered:
-        log.warning("Chart 5 skipped: no data for overall donut.")
-        return ""
-
-    labels, sizes, colors = zip(*filtered)
-
-    fig, ax = plt.subplots(figsize=(6.5, 6.5))
-    fig.patch.set_facecolor(_BG_FIGURE)
-    ax.set_facecolor(_BG_FIGURE)
-
-    wedges, _, autotexts = ax.pie(
-        sizes, labels=None, colors=colors, autopct="%1.1f%%",
-        startangle=90, pctdistance=0.78,
-        wedgeprops=dict(width=0.5, edgecolor=_BG_FIGURE, linewidth=2),
-    )
-    for at in autotexts:
-        at.set_color("white")
-        at.set_fontsize(9)
-
-    ax.legend(
-        wedges, [f"{l.replace(chr(10),' ')}  ({s})" for l, s in zip(labels, sizes)],
-        loc="lower center", bbox_to_anchor=(0.5, -0.06),
-        facecolor=_BG_LEGEND, labelcolor="white", fontsize=9, ncol=3,
-    )
-    ax.text(0, 0, f"{ov.total_injected}\nTotal",
-            ha="center", va="center", color="white", fontsize=14, fontweight="bold")
-    ax.set_title("Overall Outcome Distribution", color="white", fontsize=13, pad=10)
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "chart5_overall_donut.png")
-    _save(fig, path)
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Chart 6 — Multi-metric radar / spider chart
-# ---------------------------------------------------------------------------
-
-def _chart_radar(
-    metrics: Dict[str, MetricResult],
-    output_dir: str,
-) -> str:
-    """
-    Spider/radar chart overlaying all variants across five normalised metrics.
-
-    Axes: Detection Rate | Activation Rate | Reachable Ratio | Timeout Ratio | Error Ratio
-
-    Best for: holistic comparison — seeing which variant is harder to detect
-              and where each variant's "weak spots" are.
-    """
-    cats   = ["Detection\nRate", "Activation\nRate", "Reachable\nRatio",
-              "Timeout\nRatio", "Error\nRatio"]
-    n_cats = len(cats)
-    angles = [n / n_cats * 2 * math.pi for n in range(n_cats)] + [0]  # close the polygon
-
-    fig, ax = plt.subplots(figsize=(6.5, 6.5), subplot_kw=dict(polar=True))
-    fig.patch.set_facecolor(_BG_FIGURE)
-    ax.set_facecolor(_BG_AXES)
-
-    for vname in _PER_VARIANT:
-        color = _VARIANT_COLORS.get(vname, "#888888")
-        m     = metrics[vname]
-        total = m.total_injected or 1   # avoid /0
-
-        vals = [
-            m.detection_rate,
-            m.activation_rate,
-            max(0, m.total_reachable)  / total,
-            m.total_timeout            / total,
-            m.total_error              / total,
-        ]
-        vals += [vals[0]]   # close the polygon
-
-        label = vname.replace("_", " ").title()
-        ax.plot(angles, vals, color=color, linewidth=2, label=label)
-        ax.fill(angles, vals, color=color, alpha=0.18)
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(cats, color="white", fontsize=9)
-    ax.yaxis.set_tick_params(labelcolor="white", labelsize=7)
-    ax.spines["polar"].set_color(_SPINE_COLOR)
-    ax.set_rlabel_position(30)
-    for grid_line in ax.yaxis.get_gridlines():
-        grid_line.set_color(_SPINE_COLOR)
-    for grid_line in ax.xaxis.get_gridlines():
-        grid_line.set_color(_SPINE_COLOR)
-
-    ax.set_title("Multi-Metric Radar Comparison", color="white", fontsize=13, pad=20)
-    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=9,
-              loc="upper right", bbox_to_anchor=(1.35, 1.12))
-
-    plt.tight_layout()
-    path = os.path.join(output_dir, "chart6_radar.png")
-    _save(fig, path)
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Visualization runner
+# Visualization runner — hanya 3 chart
 # ---------------------------------------------------------------------------
 
 def generate_charts(
@@ -637,16 +480,15 @@ def generate_charts(
     timestamp: str,
 ) -> List[str]:
     """
-    Render all six charts and save them to *output_dir*.
+    Render 3 chart dan simpan ke *output_dir*.
 
-    Args:
-        metrics         : Computed MetricResult objects keyed by variant name.
-        echidna_results : Raw list of per-contract Echidna result dicts.
-        output_dir      : Directory where chart PNGs are written.
-        timestamp       : Timestamp string used for the charts sub-folder name.
+    Charts:
+        1. Rate Comparison (grouped horizontal bar)
+        2. Detection Time Distribution (violin + strip)
+        3. ECDF waktu deteksi (kedua varian digabung)
 
     Returns:
-        List of file paths for every chart that was successfully generated.
+        List of file paths untuk setiap chart yang berhasil dibuat.
     """
     charts_dir = os.path.join(output_dir, f"charts_{timestamp}")
     os.makedirs(charts_dir, exist_ok=True)
@@ -657,12 +499,12 @@ def generate_charts(
     saved: List[str] = []
 
     chart_fns = [
-        ("Rate comparison (grouped bar)",     lambda: _chart_rate_comparison(metrics, charts_dir)),
-        ("Detection time distribution",        lambda: _chart_detection_time_dist(echidna_results, charts_dir)),
-        ("Status breakdown (stacked bar)",     lambda: _chart_status_breakdown(metrics, charts_dir)),
-        ("Per-contract detection time",        lambda: _chart_detection_time_scatter(echidna_results, charts_dir)),
-        ("Overall outcome (donut)",            lambda: _chart_overall_donut(metrics, charts_dir)),
-        ("Multi-metric radar",                 lambda: _chart_radar(metrics, charts_dir)),
+        ("Rate comparison (grouped bar)",
+         lambda: _chart_rate_comparison(metrics, charts_dir)),
+        ("Detection time distribution (violin + strip)",
+         lambda: _chart_detection_time_dist(echidna_results, charts_dir)),
+        ("ECDF cumulative detection time (combined variants)",
+         lambda: _chart_ecdf_combined(echidna_results, metrics, charts_dir)),
     ]
 
     for name, fn in chart_fns:
@@ -754,8 +596,8 @@ def run_analysis(
         1. Load raw Echidna results JSON
         2. Compute per-variant and overall metrics
         3. Print a summary table to the console / log
-        4. Export metrics CSV, detail CSV, and summary JSON
-        5. Generate all six visualization charts
+        4. Export metrics CSV, detail CSV, dan summary JSON
+        5. Generate 3 visualization charts
 
     Args:
         echidna_results_json : Path to the Echidna results JSON
@@ -797,7 +639,7 @@ def run_analysis(
         metrics, echidna_results, os.path.join(output_dir, f"summary_{ts}.json")
     )
 
-    # Generate charts
+    # Generate charts (3 saja)
     chart_paths = generate_charts(metrics, echidna_results, output_dir, ts)
 
     # Key insights log block
