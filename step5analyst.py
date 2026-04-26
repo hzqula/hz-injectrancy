@@ -32,14 +32,15 @@ log = get_logger("analyzer")
 
 
 # ---------------------------------------------------------------------------
-# Visual theme constants
+# Visual constants
 # ---------------------------------------------------------------------------
 
-_BG_FIGURE   = "#0f1117"    # Outermost figure background
-_BG_AXES     = "#1a1d27"    # Individual axes background
-_BG_LEGEND   = "#2a2d3e"    # Legend background
-_GRID_COLOR  = "#2d3142"    # Major grid lines
-_SPINE_COLOR = "#3a3f52"    # Axis spine color
+_BG_FIGURE   = "#ffffff"    # Outermost figure background
+_BG_AXES     = "#ffffff"    # Individual axes background
+_BG_LEGEND   = "#f5f5f5"    # Legend background
+_GRID_COLOR  = "#e0e0e0"    # Major grid lines
+_SPINE_COLOR = "#888888"    # Axis spine color
+_TEXT_COLOR  = "#111111"
 
 _VARIANT_COLORS = {
     "single_function": "#4C72B0",
@@ -245,12 +246,11 @@ def print_metrics_table(metrics: Dict[str, MetricResult]) -> None:
 # ---------------------------------------------------------------------------
 
 def _apply_dark_theme(fig, ax_or_axes) -> None:
-    """Apply the shared dark background and grid style to a figure."""
     fig.patch.set_facecolor(_BG_FIGURE)
     axes = ax_or_axes if isinstance(ax_or_axes, (list, np.ndarray)) else [ax_or_axes]
     for ax in np.ravel(axes):
         ax.set_facecolor(_BG_AXES)
-        ax.tick_params(colors="white")
+        ax.tick_params(colors=_TEXT_COLOR)
         for spine in ax.spines.values():
             spine.set_color(_SPINE_COLOR)
 
@@ -289,18 +289,18 @@ def _chart_rate_comparison(
         w = bar.get_width()
         ax.text(
             w + 1, bar.get_y() + bar.get_height() / 2,
-            f"{w:.1f}%", va="center", ha="left", fontsize=8.5, color="white",
+            f"{w:.1f}%", va="center", ha="left", fontsize=8.5, color=_TEXT_COLOR,
         )
 
     ax.set_yticks(y)
     ax.set_yticklabels(
-        [v.replace("_", " ").title() for v in _PER_VARIANT], color="white", fontsize=10
+        [v.replace("_", " ").title() for v in _PER_VARIANT], color=_TEXT_COLOR, fontsize=10
     )
-    ax.set_xlabel("Rate (%)", color="white", fontsize=10)
+    ax.set_xlabel("Rate (%)", color=_TEXT_COLOR, fontsize=10)
     ax.set_xlim(0, 118)
-    ax.set_title("Detection & Activation Rate by Variant", color="white", fontsize=13, pad=12)
+    ax.set_title("Detection & Activation Rate by Variant", color=_TEXT_COLOR, fontsize=13, pad=12)
     ax.xaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.6, zorder=0)
-    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
+    ax.legend(facecolor=_BG_LEGEND, labelcolor=_TEXT_COLOR, fontsize=9, loc="lower right")
 
     plt.tight_layout()
     path = os.path.join(output_dir, "chart1_rate_comparison.png")
@@ -338,7 +338,7 @@ def _chart_detection_time_dist(
     for body, lbl in zip(parts["bodies"], labels):
         body.set_facecolor(_VARIANT_COLORS.get(lbl, "#888888"))
         body.set_alpha(0.5)
-    parts["cmedians"].set_color("white")
+    parts["cmedians"].set_color(_TEXT_COLOR)
     for key in ("cbars", "cmaxes", "cmins"):
         parts[key].set_color("#888888")
 
@@ -348,13 +348,13 @@ def _chart_detection_time_dist(
         ax.scatter(
             i + jitter, vals,
             color=_VARIANT_COLORS.get(lbl, "#888888"),
-            edgecolors="white", linewidths=0.4, s=32, zorder=3, alpha=0.85,
+            edgecolors="black", linewidths=0.4, s=32, zorder=3, alpha=0.85,
         )
 
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels([l.replace("_", " ").title() for l in labels], color="white", fontsize=10)
-    ax.set_ylabel("Detection Time (s)", color="white", fontsize=10)
-    ax.set_title("Detection Time Distribution by Variant", color="white", fontsize=13, pad=12)
+    ax.set_xticklabels([l.replace("_", " ").title() for l in labels], color=_TEXT_COLOR, fontsize=10)
+    ax.set_ylabel("Detection Time (s)", color=_TEXT_COLOR, fontsize=10)
+    ax.set_title("Detection Time Distribution by Variant", color=_TEXT_COLOR, fontsize=13, pad=12)
     ax.yaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.6)
 
     plt.tight_layout()
@@ -438,21 +438,21 @@ def _chart_ecdf_combined(
         xy=(ECHIDNA_TIMEOUT, final_pct),
         xytext=(ECHIDNA_TIMEOUT * 0.75, final_pct + 5),
         color="white", fontsize=9,
-        arrowprops=dict(arrowstyle="->", color="white", lw=0.8),
+        arrowprops=dict(arrowstyle="->", color=_TEXT_COLOR, lw=0.8),
     )
 
-    ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
-    ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
+    ax.set_xlabel("Time (seconds)", color=_TEXT_COLOR, fontsize=10)
+    ax.set_ylabel("Cumulative bugs detected (%)", color=_TEXT_COLOR, fontsize=10)
     ax.set_title(
         "ECDF — Cumulative Detection Rate over Time\n"
         "(single_function + cross_function combined)",
-        color="white", fontsize=12, pad=12,
+        color=_TEXT_COLOR, fontsize=12, pad=12,
     )
     ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
     ax.set_ylim(0, 108)
     ax.yaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.5, zorder=0)
     ax.xaxis.grid(True, color=_GRID_COLOR, linestyle="--", linewidth=0.5, zorder=0)
-    ax.legend(facecolor=_BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
+    ax.legend(facecolor=_BG_LEGEND, labelcolor=_TEXT_COLOR, fontsize=9, loc="lower right")
 
     plt.tight_layout()
     path = os.path.join(output_dir, "chart3_ecdf_detection_time.png")

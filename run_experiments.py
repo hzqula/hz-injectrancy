@@ -496,11 +496,11 @@ def _generate_comparison_charts(
     os.makedirs(charts_dir, exist_ok=True)
 
     # ── Visual constants ─────────────────────────────────────────────────
-    BG_FIG     = "#0f1117"
-    BG_AXES    = "#1a1d27"
-    BG_LEGEND  = "#2a2d3e"
-    GRID       = "#2d3142"
-    SPINE      = "#3a3f52"
+    BG_FIG     = "#ffffff"
+    BG_AXES    = "#ffffff"
+    BG_LEGEND  = "#f5f5f5"
+    GRID       = "#e0e0e0"
+    SPINE      = "#888888"
     EXP_COLORS = ["#4C72B0", "#DD8452", "#55A868"]
 
     from config import BUG_VARIANTS as VARIANTS
@@ -514,7 +514,7 @@ def _generate_comparison_charts(
         ax_list = axes if hasattr(axes, "__iter__") else [axes]
         for ax in ax_list:
             ax.set_facecolor(BG_AXES)
-            ax.tick_params(colors="white")
+            ax.tick_params(colors="black")
             for sp in ax.spines.values():
                 sp.set_color(SPINE)
 
@@ -542,15 +542,15 @@ def _generate_comparison_charts(
             if h > 0:
                 ax.text(
                     b.get_x() + b.get_width() / 2, h + 0.5,
-                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white",
+                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="black",
                 )
     ax.set_xticks(x)
-    ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="white")
-    ax.set_ylabel("Detection Rate (%)", color="white")
-    ax.set_title("Detection Rate by Variant & Experiment", color="white", fontsize=13, pad=12)
+    ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="black")
+    ax.set_ylabel("Detection Rate (%)", color="black")
+    ax.set_title("Detection Rate by Variant & Experiment", color="black", fontsize=13, pad=12)
     ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.6, zorder=0)
     ax.set_ylim(0, 115)
-    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9)
+    ax.legend(facecolor=BG_LEGEND, labelcolor="black", fontsize=9)
     plt.tight_layout()
     _save(fig, "cmp_chart1_detection_rate.png")
 
@@ -568,15 +568,15 @@ def _generate_comparison_charts(
             if h > 0:
                 ax.text(
                     b.get_x() + b.get_width() / 2, h + 0.5,
-                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="white",
+                    f"{h:.0f}%", ha="center", va="bottom", fontsize=7.5, color="black",
                 )
     ax.set_xticks(x)
-    ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="white")
-    ax.set_ylabel("Activation Rate (%)", color="white")
-    ax.set_title("Activation Rate by Variant & Experiment", color="white", fontsize=13, pad=12)
+    ax.set_xticklabels([v.replace("_", " ").title() for v in VARIANTS], color="black")
+    ax.set_ylabel("Activation Rate (%)", color="black")
+    ax.set_title("Activation Rate by Variant & Experiment", color="black", fontsize=13, pad=12)
     ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.6, zorder=0)
     ax.set_ylim(0, 115)
-    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9)
+    ax.legend(facecolor=BG_LEGEND, labelcolor="black", fontsize=9)
     plt.tight_layout()
     _save(fig, "cmp_chart2_activation_rate.png")
 
@@ -635,18 +635,18 @@ def _generate_comparison_charts(
             linewidth=1.0, linestyle=":", alpha=0.7,
             label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
         )
-        ax.set_xlabel("Time (seconds)", color="white", fontsize=10)
-        ax.set_ylabel("Cumulative bugs detected (%)", color="white", fontsize=10)
+        ax.set_xlabel("Time (seconds)", color="black", fontsize=10)
+        ax.set_ylabel("Cumulative bugs detected (%)", color="black", fontsize=10)
         ax.set_title(
             f"ECDF — Cumulative Detection Rate over Time\n"
             f"Variant: {variant_label}",
-            color="white", fontsize=12, pad=12,
+            color="black", fontsize=12, pad=12,
         )
         ax.set_xlim(0, ECHIDNA_TIMEOUT + 5)
         ax.set_ylim(0, 108)
         ax.yaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
         ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
-        ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
+        ax.legend(facecolor=BG_LEGEND, labelcolor="black", fontsize=9, loc="lower right")
         plt.tight_layout()
         _save(fig, f"cmp_chart{chart_num}_ecdf_{variant}.png")
 
@@ -690,17 +690,17 @@ def _generate_comparison_charts(
                     val + ECHIDNA_TIMEOUT * 0.01,
                     bar.get_y() + bar.get_height() / 2,
                     f"{val:.1f}s",
-                    va="center", ha="left", fontsize=8, color="white",
+                    va="center", ha="left", fontsize=8, color="black",
                 )
 
     ax.set_yticks(y_base)
-    ax.set_yticklabels(labels, color="white", fontsize=10)
-    ax.set_xlabel("Average detection time (s)", color="white", fontsize=10)
+    ax.set_yticklabels(labels, color="black", fontsize=10)
+    ax.set_xlabel("Average detection time (s)", color="black", fontsize=10)
     ax.set_xlim(0, ECHIDNA_TIMEOUT * 1.15)
     ax.set_title(
         "Average Detection Time per Experiment & Variant\n"
         "(lower = faster detection)",
-        color="white", fontsize=12, pad=12,
+        color="black", fontsize=12, pad=12,
     )
     ax.xaxis.grid(True, color=GRID, linestyle="--", linewidth=0.5, zorder=0)
     ax.axvline(
@@ -708,7 +708,7 @@ def _generate_comparison_charts(
         linewidth=1.0, linestyle=":", alpha=0.7,
         label=f"Timeout ({ECHIDNA_TIMEOUT}s)",
     )
-    ax.legend(facecolor=BG_LEGEND, labelcolor="white", fontsize=9, loc="lower right")
+    ax.legend(facecolor=BG_LEGEND, labelcolor="black", fontsize=9, loc="lower right")
     plt.tight_layout()
     _save(fig, "cmp_chart5_avg_detection_time.png")
 
