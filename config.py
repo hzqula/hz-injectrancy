@@ -62,7 +62,7 @@ SOLC_BINARY      = "solc"
 # The oracle function name MUST start with "echidna_" to be recognized by Echidna.
 # ---------------------------------------------------------------------------
 ORACLE_FUNCTION_PREFIX = "echidna_"
-ORACLE_FUNCTION_NAME   = "echidna_cekReentrant"
+ORACLE_FUNCTION_NAME   = "echidna_reentrantCheck"
 
 # ---------------------------------------------------------------------------
 # Internal Tracker Variable Name
