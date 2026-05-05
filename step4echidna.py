@@ -514,7 +514,7 @@ def run_echidna_all(
 
     # Summary
     exploited   = sum(1 for r in all_results if r.bug_line_hit and r.property_broken)
-    neutralized = sum(1 for r in all_results if r.bug_line_hit and not r.property_broken)
+    reachabled = sum(1 for r in all_results if r.bug_line_hit and not r.property_broken)
     unreachable = sum(
         1 for r in all_results
         if not r.bug_line_hit and not r.property_broken
@@ -525,9 +525,9 @@ def run_echidna_all(
 
     log.info("")
     log.info("Security Analysis Summary:")
-    log.info("  EXPLOITED   (Act: YES, Det: YES) : %d", exploited)
-    log.info("  NEUTRALIZED (Act: YES, Det: NO ) : %d", neutralized)
-    log.info("  UNREACHABLE (Act: NO , Det: NO ) : %d", unreachable)
+    log.info("  EXPLOITED    (Act: YES, Det: YES) : %d", exploited)
+    log.info("  REACHABLED   (Act: YES, Det: NO ) : %d", reachabled)
+    log.info("  UNREACHABLE  (Act: NO , Det: NO ) : %d", unreachable)
     log.info("  " + "-" * 40)
     log.info("  TIMEOUT                          : %d", timeout)
     log.info("  ERROR                            : %d", error)
